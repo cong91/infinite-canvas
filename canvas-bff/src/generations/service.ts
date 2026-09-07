@@ -13,7 +13,11 @@ export type CreateGenerationInput = {
     clientRequestId: string;
 };
 
-export class GenerationConflictError extends Error {}
+export class GenerationConflictError extends HttpError {
+    constructor() {
+        super(409, "GENERATION_IDEMPOTENCY_CONFLICT", "clientRequestId already belongs to a different generation");
+    }
+}
 
 export class GenerationService {
     private readonly generations: GenerationRepository;
@@ -35,7 +39,7 @@ export class GenerationService {
         const inputHash = hashInput(input);
         const existing = this.generations.findByClientRequest(accountId, input.clientRequestId);
         if (existing) {
-            if (existing.inputHash !== inputHash) throw new GenerationConflictError("clientRequestId already belongs to a different generation");
+            if (existing.inputHash !== inputHash) throw new GenerationConflictError();
             return existing;
         }
         return this.generations.create({ ...input, accountId, inputHash, status: "queued", progress: 0, attempt: 0 });

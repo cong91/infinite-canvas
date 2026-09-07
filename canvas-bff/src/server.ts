@@ -13,6 +13,10 @@ import { createProviderRouter, type ProviderRouteOptions } from "./providers/rou
 import { createDefaultProviderOptions } from "./providers/routes.js";
 import { createProjectRouter, type ProjectRouteOptions } from "./projects/routes.js";
 import { createDefaultProjectOptions } from "./projects/routes.js";
+import { createGenerationRouter, type GenerationRouteOptions } from "./generations/routes.js";
+import { InMemoryGenerationRepository } from "./generations/repository.js";
+import { GenerationService } from "./generations/service.js";
+import { InMemoryObjectStorage } from "./storage/object-storage.js";
 
 export function isAllowedOrigin(requestOrigin: string | undefined, canvasOrigin: string): boolean {
     if (!requestOrigin) return true;
@@ -29,6 +33,7 @@ export type AppDependencies = {
         providers?: Omit<ProviderRouteOptions, "sessionService">;
         projects?: Omit<ProjectRouteOptions, "sessionService">;
         assets?: Omit<AssetRouteOptions, "sessionService">;
+        generations?: Omit<GenerationRouteOptions, "sessionService">;
     };
 };
 
@@ -74,9 +79,14 @@ export function createApp(config: CanvasBffConfig, dependencies: AppDependencies
         sessionService: auth.sessionService,
         projects: projectOptions.projects,
     } as AssetRouteOptions;
+    const generationOptions = {
+        ...(dependencies.workspace?.generations ?? createDefaultGenerationOptions(projectOptions.projects, providerOptions.providers, assetOptions.assets)),
+        sessionService: auth.sessionService,
+    } as GenerationRouteOptions;
     app.use(createProviderRouter(providerOptions));
     app.use(createProjectRouter(projectOptions));
     app.use(createAssetRouter(assetOptions));
+    app.use(createGenerationRouter(generationOptions));
     app.get("/health", (_req, res) => res.json({ data: { service: "canvas-bff", status: "ok" }, requestId: res.locals.requestId }));
     app.get("/ready", (_req, res) => res.json({ data: { service: "canvas-bff", status: "ready" }, requestId: res.locals.requestId }));
     app.use((_req, _res, next) => next(new HttpError(404, "NOT_FOUND", "Route not found")));
@@ -86,6 +96,14 @@ export function createApp(config: CanvasBffConfig, dependencies: AppDependencies
         res.status(result.statusCode).json(result.body);
     });
     return app;
+}
+
+function createDefaultGenerationOptions(projects: ProjectRouteOptions["projects"], providers: ProviderRouteOptions["providers"], assets: AssetRouteOptions["assets"]): Omit<GenerationRouteOptions, "sessionService"> {
+    return {
+        service: new GenerationService({ generations: new InMemoryGenerationRepository(), projects, providers }),
+        assets,
+        objectStorage: new InMemoryObjectStorage({ signingSecret: process.env.CANVAS_OBJECT_SIGNING_SECRET ?? "development-object-signing-secret" }),
+    };
 }
 
 export function startServer(config: CanvasBffConfig = loadConfig()) {
