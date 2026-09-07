@@ -22,13 +22,14 @@ export function ClientRootInit({ children }: { children: ReactNode }) {
     useEffect(() => {
         if (handledSsoParams.current) return;
         const searchParams = new URLSearchParams(window.location.search);
-        const accessToken = searchParams.get("accessToken") || searchParams.get("access_token") || searchParams.get("ssoToken") || searchParams.get("sub2apiAccessToken");
+        const accessToken = searchParams.get("accessToken") || searchParams.get("access_token") || searchParams.get("ssoToken") || searchParams.get("sub2apiAccessToken") || searchParams.get("token");
         if (accessToken?.trim()) {
             handledSsoParams.current = true;
             searchParams.delete("accessToken");
             searchParams.delete("access_token");
             searchParams.delete("ssoToken");
             searchParams.delete("sub2apiAccessToken");
+            searchParams.delete("token");
             window.history.replaceState(null, "", `${window.location.pathname}${searchParams.size ? `?${searchParams}` : ""}${window.location.hash}`);
             void verifyCanvasSession(accessToken);
             return;

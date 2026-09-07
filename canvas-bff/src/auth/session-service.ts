@@ -87,6 +87,7 @@ export class SessionService {
     private readonly repository: InMemorySessionRepository;
     // The Sub2API assertion is held only in process memory for user-facing catalog calls.
     private readonly upstreamAssertions = new Map<string, UpstreamAssertion>();
+    private readonly upstreamAssertionTimers = new Map<string, ReturnType<typeof setTimeout>>();
     private readonly sessionTtlMs: number;
     private readonly now: () => number;
 
@@ -111,7 +112,13 @@ export class SessionService {
         };
         const sessionHash = hashToken(token);
         this.repository.createSession(account, sessionHash, session.expiresAt);
-        if (upstreamAccessToken?.trim()) this.upstreamAssertions.set(sessionHash, { token: upstreamAccessToken.trim(), expiresAt: Math.min(session.expiresAt.getTime(), now.getTime() + UPSTREAM_ASSERTION_TTL_MS) });
+        if (upstreamAccessToken?.trim()) {
+            const expiresAt = Math.min(session.expiresAt.getTime(), now.getTime() + UPSTREAM_ASSERTION_TTL_MS);
+            this.upstreamAssertions.set(sessionHash, { token: upstreamAccessToken.trim(), expiresAt });
+            const timer = setTimeout(() => this.clearUpstreamAssertion(sessionHash), Math.max(0, expiresAt - this.now()));
+            timer.unref?.();
+            this.upstreamAssertionTimers.set(sessionHash, timer);
+        }
         return { token, session };
     }
 
@@ -120,7 +127,7 @@ export class SessionService {
         const sessionHash = hashToken(token);
         const record = this.repository.getSession(sessionHash);
         if (!record || record.revokedAt || record.expiresAt.getTime() <= this.now()) {
-            this.upstreamAssertions.delete(sessionHash);
+            this.clearUpstreamAssertion(sessionHash);
             return null;
         }
         const lastSeenAt = new Date(this.now());
@@ -136,7 +143,7 @@ export class SessionService {
     revokeSession(token: string): boolean {
         if (!token.trim()) return false;
         const sessionHash = hashToken(token);
-        this.upstreamAssertions.delete(sessionHash);
+        this.clearUpstreamAssertion(sessionHash);
         return this.repository.revokeSession(sessionHash, new Date(this.now()));
     }
 
@@ -145,10 +152,17 @@ export class SessionService {
         const sessionHash = hashToken(canvasSessionToken);
         const assertion = this.upstreamAssertions.get(sessionHash);
         if (!assertion || assertion.expiresAt <= this.now()) {
-            this.upstreamAssertions.delete(sessionHash);
+            this.clearUpstreamAssertion(sessionHash);
             return null;
         }
         return assertion.token;
+    }
+
+    private clearUpstreamAssertion(sessionHash: string): void {
+        this.upstreamAssertions.delete(sessionHash);
+        const timer = this.upstreamAssertionTimers.get(sessionHash);
+        if (timer) clearTimeout(timer);
+        this.upstreamAssertionTimers.delete(sessionHash);
     }
 }
 
