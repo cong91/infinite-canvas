@@ -53,6 +53,21 @@ test("rejects a request from an origin other than the exact canvas origin", asyn
     assert.equal(response.headers.get("access-control-allow-origin"), null);
 });
 
+test("rejects state-changing requests without the exact Canvas origin", async () => {
+    const app = createApp(config);
+    const server = app.listen(0);
+    await new Promise<void>((resolve) => server.once("listening", resolve));
+    const address = server.address();
+    assert(address && typeof address !== "string");
+    try {
+        const response = await fetch(`http://127.0.0.1:${address.port}/api/v1/projects`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "forbidden" }) });
+        assert.equal(response.status, 403);
+        assert.equal((await response.json()).code, "ORIGIN_REQUIRED");
+    } finally {
+        await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
+});
+
 test("responds with a standard not-found error envelope", async () => {
     const response = await request("/missing", { headers: { Origin: config.canvasOrigin } });
     assert.equal(response.status, 404);

@@ -60,6 +60,13 @@ export function createApp(config: CanvasBffConfig, dependencies: AppDependencies
         next();
     });
     app.use(express.json({ limit: "1mb" }));
+    app.use((req, _res, next) => {
+        if (["POST", "PATCH", "DELETE"].includes(req.method) && req.header("origin") !== config.canvasOrigin) {
+            next(new HttpError(403, "ORIGIN_REQUIRED", "A valid Canvas origin is required for state-changing requests"));
+            return;
+        }
+        next();
+    });
     const auth = dependencies.auth ?? {
         canvasOrigin: config.canvasOrigin,
         sub2ApiClient: new Sub2ApiClient(config.sub2ApiBaseUrl),
