@@ -37,6 +37,16 @@ test("project and asset routes derive ownership from the session account", async
         const create = await fetch(`${url}/api/v1/projects`, { method: "POST", headers: { Origin: config.canvasOrigin, Cookie: cookieA, "Content-Type": "application/json" }, body: JSON.stringify({ name: "A canvas", data: { nodes: [] } }) });
         assert.equal(create.status, 201);
         const project = await create.json() as { data: { id: string } };
+        const staleUpdate = await fetch(`${url}/api/v1/projects/${project.data.id}`, {
+            method: "PATCH",
+            headers: { Origin: config.canvasOrigin, Cookie: cookieA, "Content-Type": "application/json" },
+            body: JSON.stringify({ name: "Renamed", revision: 2 }),
+        });
+        assert.equal(staleUpdate.status, 409);
+        const staleBody = await staleUpdate.json() as { code: string; message: string; requestId: string };
+        assert.equal(staleBody.code, "PROJECT_REVISION_CONFLICT");
+        assert.equal(staleBody.message, "Project was updated elsewhere");
+        assert.equal(typeof staleBody.requestId, "string");
         const own = await fetch(`${url}/api/v1/projects/${project.data.id}`, { headers: { Origin: config.canvasOrigin, Cookie: cookieA } });
         assert.equal(own.status, 200);
         const foreign = await fetch(`${url}/api/v1/projects/${project.data.id}`, { headers: { Origin: config.canvasOrigin, Cookie: cookieB } });

@@ -38,8 +38,10 @@ export function createProjectRouter(options: ProjectRouteOptions): Router {
 
     router.patch("/api/v1/projects/:projectId", authenticated, (request, response) => {
         const account = getAccount(response.locals.auth);
-        const project = options.projects.update(account.id, String(request.params.projectId), parseBody(projectPatch, request.body));
-        if (!project) throw new HttpError(404, "PROJECT_NOT_FOUND", "Project was not found or revision is stale");
+        const id = String(request.params.projectId);
+        if (!options.projects.get(account.id, id)) throw new HttpError(404, "PROJECT_NOT_FOUND", "Project was not found");
+        const project = options.projects.update(account.id, id, parseBody(projectPatch, request.body));
+        if (!project) throw new HttpError(409, "PROJECT_REVISION_CONFLICT", "Project was updated elsewhere");
         response.json({ data: toPublicProject(project), requestId: response.locals.requestId });
     });
 
