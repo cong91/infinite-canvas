@@ -3,6 +3,7 @@
 ## Unreleased
 
 + [新增] Canvas BFF 增加 Sub2API SSO 会话、账号级 provider/project/asset/generation API、加密 provider key 与可恢复的 generation worker 边界；JWT 仅在 BFF 进程内用于 catalog/key 解析，不写入浏览器或数据库。
++ [新增] 已登录 Canvas 的项目列表、创建、重命名、删除和画布自动保存改为通过 BFF 按账号隔离，并使用 revision 防止旧页面覆盖新数据。
 + [新增] 提示词详情支持调用已配置的文本模型翻译成越南语，并可在原文与译文之间切换，复制和生成仍使用原始提示词。
 + [新增] 前端新增越南语界面，支持从右上角在简体中文、越南语和英文之间切换，并同步 Ant Design 与日期组件语言。
 + [调整] 开启本地代理后，WebDAV 测试连接和同步也经本机代理转发，关闭后仍直连。

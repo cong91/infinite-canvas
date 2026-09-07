@@ -1,6 +1,8 @@
 import { create } from "zustand";
 
 import { canvasBff, CanvasBffError, type CanvasAccount } from "@/services/api/canvas-bff";
+import { fromBffCanvasProject } from "@/services/api/canvas-workspace";
+import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useCanvasProviderStore } from "@/stores/use-canvas-provider-store";
 
 export type CanvasAccountStatus = "unknown" | "loading" | "authenticated" | "unauthenticated" | "error";
@@ -9,6 +11,11 @@ async function clearLocalWorkspaceCache() {
     const [{ useCanvasStore }, { useAssetStore }] = await Promise.all([import("@/stores/canvas/use-canvas-store"), import("@/stores/use-asset-store")]);
     useCanvasStore.getState().replaceProjects([]);
     useAssetStore.getState().replaceAssets([]);
+}
+
+async function hydrateRemoteProjects() {
+    const projects = await canvasBff.listProjects();
+    useCanvasStore.getState().replaceProjects(projects.map(fromBffCanvasProject));
 }
 
 type CanvasAccountStore = {
@@ -32,9 +39,12 @@ export const useCanvasAccountStore = create<CanvasAccountStore>()((set, get) => 
         try {
             const session = await canvasBff.getSession();
             await clearLocalWorkspaceCache();
+            await hydrateRemoteProjects();
             set({ status: "authenticated", account: session.account, sessionExpiresAt: session.sessionExpiresAt, error: null });
         } catch (error) {
             if (error instanceof CanvasBffError && error.status === 401) {
+                await clearLocalWorkspaceCache();
+                useCanvasProviderStore.getState().clear();
                 set({ status: "unauthenticated", account: null, sessionExpiresAt: null, error: null });
                 return;
             }
@@ -49,6 +59,7 @@ export const useCanvasAccountStore = create<CanvasAccountStore>()((set, get) => 
             const session = await canvasBff.verifySub2ApiToken(token);
             await clearLocalWorkspaceCache();
             if (get().account && get().account?.sub2ApiUserId !== session.account.sub2ApiUserId) useCanvasProviderStore.getState().clear();
+            await hydrateRemoteProjects();
             set({ status: "authenticated", account: session.account, sessionExpiresAt: session.sessionExpiresAt, error: null });
             return true;
         } catch (error) {

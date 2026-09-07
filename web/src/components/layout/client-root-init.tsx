@@ -48,7 +48,8 @@ export function ClientRootInit({ children }: { children: ReactNode }) {
         }
         if (!allowedOrigin) return;
         const handleMessage = (event: MessageEvent<unknown>) => {
-            if (event.origin !== allowedOrigin || !event.data || typeof event.data !== "object") return;
+            const expectedSource = window.parent === window ? window : window.parent;
+            if (event.origin !== allowedOrigin || event.source !== expectedSource || !event.data || typeof event.data !== "object") return;
             const data = event.data as { type?: unknown; accessToken?: unknown };
             if (data.type !== "sub2api:sso" || typeof data.accessToken !== "string" || !data.accessToken.trim()) return;
             void verifyCanvasSession(data.accessToken);

@@ -6,6 +6,8 @@ import { saveAs } from "file-saver";
 import { useTranslation } from "react-i18next";
 
 import { requestEdit, requestGeneration, requestImageQuestion } from "@/services/api/image";
+import { canvasBff } from "@/services/api/canvas-bff";
+import { saveCanvasProject, toBffCanvasProject } from "@/services/api/canvas-workspace";
 import { requestAudioGeneration, storeGeneratedAudio } from "@/services/api/audio";
 import { createVideoGenerationTask, isVideoTaskFailed, storeGeneratedVideo, waitForVideoGenerationTask } from "@/services/api/video";
 import { defaultConfig, useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
@@ -44,6 +46,7 @@ import { CanvasSidePanel } from "@/components/canvas/canvas-side-panel";
 import { CanvasZoomControls } from "@/components/canvas/canvas-zoom-controls";
 import { useAgentStore } from "@/stores/use-agent-store";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
+import { useCanvasAccountStore } from "@/stores/use-canvas-account-store";
 import { useAgentBridge } from "@/pages/canvas/hooks/use-agent-bridge";
 import { usePluginHost } from "@/pages/canvas/hooks/use-plugin-host";
 import { buildNodeMentionReferences, getGroupResourceNodes, isCanvasReferenceNode, type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
@@ -211,6 +214,7 @@ function InfiniteCanvasPage() {
     const renameProject = useCanvasStore((state) => state.renameProject);
     const deleteProjects = useCanvasStore((state) => state.deleteProjects);
     const currentProject = useCanvasStore((state) => state.projects.find((project) => project.id === projectId));
+    const accountStatus = useCanvasAccountStore((state) => state.status);
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const [nodes, setNodes] = useState<CanvasNodeData[]>([]);
     const [connections, setConnections] = useState<CanvasConnection[]>([]);
@@ -270,6 +274,9 @@ function InfiniteCanvasPage() {
     const pendingConnectionCreateRef = useRef(pendingConnectionCreate);
     const generationRequestsRef = useRef(new Map<string, CanvasGenerationRequest>());
     const videoPollIdsRef = useRef(new Set<string>());
+    const remoteSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const remoteSaveInFlightRef = useRef(false);
+    const lastRemoteSnapshotRef = useRef<string | null>(null);
 
     const createHistoryEntry = useCallback(
         (): CanvasHistoryEntry => ({
@@ -424,13 +431,14 @@ function InfiniteCanvasPage() {
     );
 
     useEffect(() => {
-        if (!hydrated) return;
+        if (!hydrated || accountStatus === "unknown" || accountStatus === "loading") return;
         setProjectLoaded(false);
         const project = openProject(projectId);
         if (!project) {
             navigate("/canvas", { replace: true });
             return;
         }
+        lastRemoteSnapshotRef.current = accountStatus === "authenticated" && project.remoteRevision !== undefined ? JSON.stringify(toBffCanvasProject(project)) : null;
 
         const restore = async () => {
             const restoredNodes = await hydrateCanvasImages(resetInterruptedGeneration(project.nodes));
@@ -459,7 +467,7 @@ function InfiniteCanvasPage() {
             setProjectLoaded(true);
         };
         void restore();
-    }, [hydrated, navigate, openProject, projectId]);
+    }, [accountStatus, hydrated, navigate, openProject, projectId]);
 
     useEffect(() => {
         if (!projectLoaded) return;
@@ -511,6 +519,36 @@ function InfiniteCanvasPage() {
         if (!projectLoaded || historyPausedRef.current) return;
         updateProject(projectId, { nodes, connections, chatSessions, activeChatId, backgroundMode, showImageInfo });
     }, [activeChatId, backgroundMode, chatSessions, connections, nodes, projectId, projectLoaded, showImageInfo, updateProject]);
+
+    useEffect(() => {
+        if (accountStatus !== "authenticated" || !projectLoaded || !currentProject) return;
+        const snapshot = JSON.stringify(toBffCanvasProject(currentProject));
+        if (snapshot === lastRemoteSnapshotRef.current) return;
+        if (remoteSaveTimerRef.current) clearTimeout(remoteSaveTimerRef.current);
+        remoteSaveTimerRef.current = setTimeout(() => {
+            remoteSaveTimerRef.current = null;
+            if (remoteSaveInFlightRef.current) return;
+            remoteSaveInFlightRef.current = true;
+            void (async () => {
+                let candidate = currentProject;
+                while (true) {
+                    const saved = await saveCanvasProject(candidate);
+                    lastRemoteSnapshotRef.current = JSON.stringify(toBffCanvasProject(saved));
+                    useCanvasStore.getState().updateProject(projectId, { remoteRevision: saved.remoteRevision });
+                    const latest = useCanvasStore.getState().projects.find((project) => project.id === projectId);
+                    if (!latest || JSON.stringify(toBffCanvasProject(latest)) === lastRemoteSnapshotRef.current) break;
+                    candidate = latest;
+                }
+            })()
+                .catch((error) => message.error(error instanceof Error ? error.message : t("canvas.remoteSaveFailed", { defaultValue: "Canvas save failed" })))
+                .finally(() => {
+                    remoteSaveInFlightRef.current = false;
+                });
+        }, 600);
+        return () => {
+            if (remoteSaveTimerRef.current) clearTimeout(remoteSaveTimerRef.current);
+        };
+    }, [accountStatus, currentProject, message, projectLoaded, projectId, t]);
 
     useEffect(() => {
         if (!dialogNodeId) setNodeImageSettingsOpen(false);
@@ -1149,10 +1187,17 @@ function InfiniteCanvasPage() {
     }, [createProject, navigate, t]);
 
     const deleteCurrentProject = useCallback(() => {
-        deleteProjects([projectId]);
-        cleanupAssetImages();
-        navigate("/canvas");
-    }, [cleanupAssetImages, deleteProjects, navigate, projectId]);
+        const removeLocalProject = () => {
+            deleteProjects([projectId]);
+            cleanupAssetImages();
+            navigate("/canvas");
+        };
+        if (accountStatus !== "authenticated") {
+            removeLocalProject();
+            return;
+        }
+        void canvasBff.deleteProject(projectId).then(removeLocalProject).catch((error) => message.error(error instanceof Error ? error.message : t("canvas.remoteSaveFailed", { defaultValue: "Canvas save failed" })));
+    }, [accountStatus, cleanupAssetImages, deleteProjects, message, navigate, projectId, t]);
 
     const exportCurrentProject = useCallback(async () => {
         const project = useCanvasStore.getState().projects.find((item) => item.id === projectId);
