@@ -5,6 +5,12 @@ import { useCanvasProviderStore } from "@/stores/use-canvas-provider-store";
 
 export type CanvasAccountStatus = "unknown" | "loading" | "authenticated" | "unauthenticated" | "error";
 
+async function clearLocalWorkspaceCache() {
+    const [{ useCanvasStore }, { useAssetStore }] = await Promise.all([import("@/stores/canvas/use-canvas-store"), import("@/stores/use-asset-store")]);
+    useCanvasStore.getState().replaceProjects([]);
+    useAssetStore.getState().replaceAssets([]);
+}
+
 type CanvasAccountStore = {
     status: CanvasAccountStatus;
     account: CanvasAccount | null;
@@ -25,6 +31,7 @@ export const useCanvasAccountStore = create<CanvasAccountStore>()((set, get) => 
         set({ status: "loading", error: null });
         try {
             const session = await canvasBff.getSession();
+            await clearLocalWorkspaceCache();
             set({ status: "authenticated", account: session.account, sessionExpiresAt: session.sessionExpiresAt, error: null });
         } catch (error) {
             if (error instanceof CanvasBffError && error.status === 401) {
@@ -40,6 +47,7 @@ export const useCanvasAccountStore = create<CanvasAccountStore>()((set, get) => 
         set({ status: "loading", error: null });
         try {
             const session = await canvasBff.verifySub2ApiToken(token);
+            await clearLocalWorkspaceCache();
             if (get().account && get().account?.sub2ApiUserId !== session.account.sub2ApiUserId) useCanvasProviderStore.getState().clear();
             set({ status: "authenticated", account: session.account, sessionExpiresAt: session.sessionExpiresAt, error: null });
             return true;
@@ -52,6 +60,7 @@ export const useCanvasAccountStore = create<CanvasAccountStore>()((set, get) => 
         try {
             await canvasBff.logout();
         } finally {
+            await clearLocalWorkspaceCache();
             useCanvasProviderStore.getState().clear();
             set({ status: "unauthenticated", account: null, sessionExpiresAt: null, error: null });
         }
