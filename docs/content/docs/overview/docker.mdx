@@ -21,6 +21,15 @@ Open `http://localhost:3000`.
 docker compose -f docker-compose.local.yml up -d --build
 ```
 
+To test the Canvas BFF infrastructure separately, start the isolated PostgreSQL and MinIO stack:
+
+```bash
+docker compose -f docker-compose.bff.local.yml -p infinite-canvas-bff up -d --build
+powershell -ExecutionPolicy Bypass -File scripts/smoke-bff-stack.ps1
+```
+
+This provisions PostgreSQL 16, runs the checked-in BFF migrations, creates the `canvas-media` bucket in MinIO, and starts the BFF on `http://localhost:17372`. The current BFF still uses in-memory repositories, so this verifies container wiring, migration bootstrap and health only; it does not claim durable Canvas persistence yet. Stop it with `docker compose -f docker-compose.bff.local.yml -p infinite-canvas-bff down`; add `-v` only when intentionally deleting test data.
+
 ## Documentation image
 
 The documentation in `docs/` is a separate Next.js standalone application with server capabilities.

@@ -13,3 +13,14 @@ PORT=17372
 Run `npm install`, then `npm test`, `npm run build` or `npm start` from this directory. The service never accepts a wildcard origin and does not log request credentials.
 
 The current repositories and object storage are in-memory adapters intended for contract tests and local wiring. PostgreSQL, S3-compatible storage and concrete provider HTTP adapters still need deployment-specific selection and implementation before production use.
+
+## Docker infrastructure smoke
+
+From the repository root, run the isolated local stack:
+
+```powershell
+docker compose -f docker-compose.bff.local.yml -p infinite-canvas-bff up -d --build
+powershell -ExecutionPolicy Bypass -File scripts/smoke-bff-stack.ps1
+```
+
+The stack starts PostgreSQL 16, applies the checked-in migrations, creates the `canvas-media` bucket in MinIO, and starts the BFF on port `17372`. It intentionally tests infrastructure and migration wiring only; the running BFF still uses in-memory repositories until the PostgreSQL/S3 adapter slice is implemented. Stop it with `docker compose -f docker-compose.bff.local.yml -p infinite-canvas-bff down`. Named volumes are preserved unless `-v` is explicitly added.

@@ -29,6 +29,15 @@ http://localhost:3000
 docker compose -f docker-compose.local.yml up -d --build
 ```
 
+如需单独测试 Canvas BFF 的基础设施，可启动隔离的 PostgreSQL 和 MinIO stack：
+
+```bash
+docker compose -f docker-compose.bff.local.yml -p infinite-canvas-bff up -d --build
+powershell -ExecutionPolicy Bypass -File scripts/smoke-bff-stack.ps1
+```
+
+该 stack 会启动 PostgreSQL 16、执行仓库中的 BFF 迁移、在 MinIO 创建 `canvas-media` bucket，并在 `http://localhost:17372` 启动 BFF。当前 BFF 仍使用内存仓储，因此这里只验证容器连线、迁移初始化和健康检查，不代表 Canvas 数据已经持久化。停止命令为 `docker compose -f docker-compose.bff.local.yml -p infinite-canvas-bff down`；只有确认要删除测试数据时才添加 `-v`。
+
 ## 文档站镜像
 
 文档站位于 `docs/` 目录，按带服务端能力的 Next.js standalone 应用单独构建，不打进主应用镜像。
