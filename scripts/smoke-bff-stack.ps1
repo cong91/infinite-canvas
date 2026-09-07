@@ -10,6 +10,9 @@ $bffPort = if ($env:CANVAS_BFF_PORT) { $env:CANVAS_BFF_PORT } else { "17372" }
 docker @composeArgs config --quiet
 docker @composeArgs ps
 
+docker @composeArgs run --rm postgres-migrate
+docker @composeArgs run --rm minio-init
+
 $schema = docker @composeArgs exec -T postgres psql -U $postgresUser -d $postgresDb -tAc "SELECT string_agg(to_regclass(table_name)::text, ',' ORDER BY table_name) FROM (VALUES ('canvas_accounts'), ('canvas_projects'), ('canvas_assets'), ('canvas_generations')) AS tables(table_name);"
 if ($schema.Trim() -ne "canvas_accounts,canvas_assets,canvas_generations,canvas_projects") {
     throw "Canvas migration smoke failed: $($schema.Trim())"
