@@ -1,6 +1,6 @@
 # Infinite Canvas BFF
 
-The Canvas BFF is the account-scoped HTTP boundary for Infinite Canvas. It verifies a Sub2API dashboard JWT through user-facing Sub2API APIs, issues an opaque Canvas session, owns account-scoped provider/project/asset/generation records and exposes signed media URLs. The Sub2API assertion is retained only in process memory for the active Canvas session so catalog/key selection can be resolved server-side; it is never written to the database, response JSON or logs.
+The Canvas BFF is the account-scoped HTTP boundary for Infinite Canvas. It verifies a Sub2API dashboard JWT through user-facing Sub2API APIs, issues an opaque Canvas session, owns account-scoped provider/project/asset/generation records and exposes signed media URLs. The Sub2API assertion is retained only in process memory for up to ten minutes so catalog/key selection can be resolved server-side; it is never written to the database, response JSON or logs. The Canvas session itself can remain valid longer, but a fresh SSO handoff is required after the upstream assertion expires.
 
 ## Local setup
 
