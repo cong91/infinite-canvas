@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request, type RequestHandler, type Response } from "express";
 import { z } from "zod";
 
 import { requireSessionMiddleware, type AuthenticatedContext } from "../auth/routes.js";
@@ -27,38 +27,39 @@ export function createGenerationRouter(options: GenerationRouteOptions): Router 
     const router = Router();
     const authenticated = requireSessionMiddleware(options.sessionService);
 
-    router.get("/api/v1/generations", authenticated, (request, response) => {
+    router.get("/api/v1/generations", authenticated, asyncHandler(async (request, response) => {
         const account = getAccount(response.locals.auth);
-        response.json({ data: options.service.list(account.id).map((record) => toPublicGeneration(record, account.id, options)), requestId: response.locals.requestId });
-    });
+        response.json({ data: await Promise.all(options.service.list(account.id).map((record) => toPublicGeneration(record, account.id, options))), requestId: response.locals.requestId });
+    }));
 
-    router.post("/api/v1/generations", authenticated, (request, response) => {
+    router.post("/api/v1/generations", authenticated, asyncHandler(async (request, response) => {
         const account = getAccount(response.locals.auth);
         const body = parseBody(generationBody, request.body);
         const generation = options.service.create(account.id, body as CreateGenerationInput);
-        response.status(201).json({ data: toPublicGeneration(generation, account.id, options), requestId: response.locals.requestId });
-    });
+        response.status(201).json({ data: await toPublicGeneration(generation, account.id, options), requestId: response.locals.requestId });
+    }));
 
-    router.get("/api/v1/generations/:generationId", authenticated, (request, response) => {
+    router.get("/api/v1/generations/:generationId", authenticated, asyncHandler(async (request, response) => {
         const account = getAccount(response.locals.auth);
         const generation = options.service.get(account.id, String(request.params.generationId));
         if (!generation) throw new HttpError(404, "GENERATION_NOT_FOUND", "Generation was not found");
-        response.json({ data: toPublicGeneration(generation, account.id, options), requestId: response.locals.requestId });
-    });
+        response.json({ data: await toPublicGeneration(generation, account.id, options), requestId: response.locals.requestId });
+    }));
 
-    router.post("/api/v1/generations/:generationId/cancel", authenticated, (request, response) => {
+    router.post("/api/v1/generations/:generationId/cancel", authenticated, asyncHandler(async (request, response) => {
         const account = getAccount(response.locals.auth);
         const id = String(request.params.generationId);
         if (!options.service.get(account.id, id)) throw new HttpError(404, "GENERATION_NOT_FOUND", "Generation was not found");
         if (!options.service.cancel(account.id, id)) throw new HttpError(409, "GENERATION_NOT_CANCELLABLE", "Generation cannot be cancelled");
-        response.json({ data: toPublicGeneration(options.service.get(account.id, id)!, account.id, options), requestId: response.locals.requestId });
-    });
+        response.json({ data: await toPublicGeneration(options.service.get(account.id, id)!, account.id, options), requestId: response.locals.requestId });
+    }));
 
     return router;
 }
 
-function toPublicGeneration(record: GenerationRecord, accountId: string, options: GenerationRouteOptions) {
+async function toPublicGeneration(record: GenerationRecord, accountId: string, options: GenerationRouteOptions) {
     const asset = record.outputAssetId ? options.assets.get(accountId, record.outputAssetId) : undefined;
+    const signedUrl = asset?.objectKey ? await options.objectStorage.createSignedReadUrl(accountId, asset.objectKey, 300) : undefined;
     return {
         id: record.id,
         projectId: record.projectId,
@@ -69,7 +70,7 @@ function toPublicGeneration(record: GenerationRecord, accountId: string, options
         attempt: record.attempt,
         ...(record.errorCode ? { errorCode: record.errorCode } : {}),
         ...(record.outputAssetId ? { outputAssetId: record.outputAssetId } : {}),
-        ...(asset ? { asset: { id: asset.id, kind: asset.kind, objectKey: asset.objectKey, providerUrl: asset.providerUrl, metadata: asset.metadata } } : {}),
+        ...(asset ? { asset: { id: asset.id, kind: asset.kind, providerUrl: asset.providerUrl, metadata: asset.metadata, ...(signedUrl ? { signedUrl } : {}) } } : {}),
         createdAt: record.createdAt.toISOString(),
         updatedAt: record.updatedAt.toISOString(),
     };
@@ -84,4 +85,10 @@ function parseBody<T extends z.ZodTypeAny>(schema: T, value: unknown): z.output<
     const result = schema.safeParse(value);
     if (!result.success) throw new HttpError(400, "INVALID_REQUEST", "Request body is invalid");
     return result.data;
+}
+
+function asyncHandler(handler: (request: Request, response: Response) => Promise<void>): RequestHandler {
+    return (request, response, next) => {
+        void handler(request, response).catch(next);
+    };
 }
