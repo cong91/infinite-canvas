@@ -7,6 +7,12 @@ import { HttpError, toErrorEnvelope } from "./http/errors.js";
 import { createAuthRouter, type AuthRouteOptions } from "./auth/routes.js";
 import { InMemorySessionRepository, SessionService } from "./auth/session-service.js";
 import { Sub2ApiClient } from "./auth/sub2api-client.js";
+import { createAssetRouter, type AssetRouteOptions } from "./assets/routes.js";
+import { createDefaultAssetOptions } from "./assets/routes.js";
+import { createProviderRouter, type ProviderRouteOptions } from "./providers/routes.js";
+import { createDefaultProviderOptions } from "./providers/routes.js";
+import { createProjectRouter, type ProjectRouteOptions } from "./projects/routes.js";
+import { createDefaultProjectOptions } from "./projects/routes.js";
 
 export function isAllowedOrigin(requestOrigin: string | undefined, canvasOrigin: string): boolean {
     if (!requestOrigin) return true;
@@ -19,6 +25,11 @@ export function isAllowedOrigin(requestOrigin: string | undefined, canvasOrigin:
 
 export type AppDependencies = {
     auth?: AuthRouteOptions;
+    workspace?: {
+        providers?: Omit<ProviderRouteOptions, "sessionService">;
+        projects?: Omit<ProjectRouteOptions, "sessionService">;
+        assets?: Omit<AssetRouteOptions, "sessionService">;
+    };
 };
 
 export function createApp(config: CanvasBffConfig, dependencies: AppDependencies = {}) {
@@ -50,6 +61,22 @@ export function createApp(config: CanvasBffConfig, dependencies: AppDependencies
         sessionService: new SessionService(new InMemorySessionRepository()),
     };
     app.use(createAuthRouter(auth));
+    const projectOptions = {
+        ...(dependencies.workspace?.projects ?? createDefaultProjectOptions(auth.sessionService)),
+        sessionService: auth.sessionService,
+    } as ProjectRouteOptions;
+    const providerOptions = {
+        ...(dependencies.workspace?.providers ?? createDefaultProviderOptions(auth.sessionService, config.sub2ApiBaseUrl)),
+        sessionService: auth.sessionService,
+    } as ProviderRouteOptions;
+    const assetOptions = {
+        ...(dependencies.workspace?.assets ?? createDefaultAssetOptions(auth.sessionService, projectOptions.projects)),
+        sessionService: auth.sessionService,
+        projects: projectOptions.projects,
+    } as AssetRouteOptions;
+    app.use(createProviderRouter(providerOptions));
+    app.use(createProjectRouter(projectOptions));
+    app.use(createAssetRouter(assetOptions));
     app.get("/health", (_req, res) => res.json({ data: { service: "canvas-bff", status: "ok" }, requestId: res.locals.requestId }));
     app.get("/ready", (_req, res) => res.json({ data: { service: "canvas-bff", status: "ready" }, requestId: res.locals.requestId }));
     app.use((_req, _res, next) => next(new HttpError(404, "NOT_FOUND", "Route not found")));
