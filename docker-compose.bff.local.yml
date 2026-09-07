@@ -30,11 +30,8 @@ services:
       PGPASSWORD: ${POSTGRES_PASSWORD:-canvas-dev-password}
     volumes:
       - ./canvas-bff/migrations:/migrations:ro
-    command: >-
-      sh -eu -c
-      'for migration in /migrations/*.sql; do
-      psql --set ON_ERROR_STOP=1 --file "$${migration}";
-      done'
+      - ./canvas-bff/scripts/run-migrations.sh:/usr/local/bin/run-migrations.sh:ro
+    command: ["sh", "/usr/local/bin/run-migrations.sh"]
     restart: "no"
 
   minio:

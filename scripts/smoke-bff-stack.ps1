@@ -13,19 +13,24 @@ docker @composeArgs ps
 docker @composeArgs run --rm postgres-migrate
 docker @composeArgs run --rm minio-init
 
-$schema = docker @composeArgs exec -T postgres psql -U $postgresUser -d $postgresDb -tAc "SELECT string_agg(to_regclass(table_name)::text, ',' ORDER BY table_name) FROM (VALUES ('canvas_accounts'), ('canvas_projects'), ('canvas_assets'), ('canvas_generations')) AS tables(table_name);"
-if ($schema.Trim() -ne "canvas_accounts,canvas_assets,canvas_generations,canvas_projects") {
+function Wait-Http($uri) {
+    for ($attempt = 1; $attempt -le 30; $attempt++) {
+        try {
+            $response = Invoke-WebRequest -UseBasicParsing $uri
+            if ($response.StatusCode -eq 200) { return }
+        } catch {
+            Start-Sleep -Seconds 1
+        }
+    }
+    throw "Timed out waiting for $uri"
+}
+
+Wait-Http "http://127.0.0.1:$minioApiPort/minio/health/live"
+Wait-Http "http://127.0.0.1:$bffPort/ready"
+
+$schema = docker @composeArgs exec -T postgres psql -U $postgresUser -d $postgresDb -tAc "SELECT string_agg(to_regclass(table_name)::text, ',' ORDER BY table_name) FROM (VALUES ('canvas_accounts'), ('canvas_sessions'), ('canvas_providers'), ('canvas_projects'), ('canvas_assets'), ('canvas_generations')) AS tables(table_name);"
+if ($schema.Trim() -ne "canvas_accounts,canvas_assets,canvas_generations,canvas_projects,canvas_providers,canvas_sessions") {
     throw "Canvas migration smoke failed: $($schema.Trim())"
-}
-
-$health = Invoke-WebRequest -UseBasicParsing "http://127.0.0.1:$minioApiPort/minio/health/live"
-if ($health.StatusCode -ne 200) {
-    throw "MinIO health smoke failed: $($health.StatusCode)"
-}
-
-$bff = Invoke-WebRequest -UseBasicParsing "http://127.0.0.1:$bffPort/ready"
-if ($bff.StatusCode -ne 200) {
-    throw "Canvas BFF readiness smoke failed: $($bff.StatusCode)"
 }
 
 Write-Output "BFF Docker smoke passed: PostgreSQL migrations, MinIO health, and Canvas BFF readiness."
