@@ -62,6 +62,7 @@ See [Third-party Prompt Sources](/docs/overview/third-party-prompt-repositories)
 
 ## Current limitations
 
-- The project is frontend-first and does not provide built-in cloud accounts or cloud storage.
-- API keys remain in browser storage and requests are sent directly to configured providers.
+- The Canvas BFF now provides the account/session/provider/project/asset/generation contract and Sub2API SSO handoff, but the default frontend still needs remote-first project hydration and generation adapter wiring before it can replace the local workbench path.
+- The checked-in BFF currently uses in-memory repositories and injectable worker/provider boundaries for contract validation; PostgreSQL, S3-compatible object storage, production provider adapters and deployment topology remain pending.
+- The existing local workbench continues to keep its legacy API keys and browser data locally until the remote generation path is enabled for that surface. Do not treat localforage or WebDAV as the account source of truth.
 - Production Docker static-resource paths still require broader deployment verification.

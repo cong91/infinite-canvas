@@ -7,3 +7,6 @@ description: Planned follow-up work
 
 - Replace the Claude Code CLI adapter with a Claude Agent SDK adapter and improve the tool queue, following the [Local Agent Integration Plan](/docs/progress/local-agent-integration-plan).
 - Add Skill installation from web search, Skill resource-file management, and controlled local-memory persistence.
+- Replace the BFF in-memory repositories with approved PostgreSQL and S3-compatible adapters, then add deployment health checks and worker startup wiring.
+- Implement production provider HTTP adapters and connect canvas/image/video/audio generation to the account-backed BFF generation API; keep plugin-authored direct provider calls explicitly local-only.
+- Hydrate canvas projects and assets from the account BFF before localforage/WebDAV cache/export, with session-expiry cleanup and two-account browser acceptance coverage.
