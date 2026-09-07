@@ -4,6 +4,7 @@ import type { Sub2ApiIdentity } from "./sub2api-client.js";
 
 export const SESSION_COOKIE_NAME = "canvas_session";
 export const DEFAULT_SESSION_TTL_MS = 8 * 60 * 60 * 1_000;
+export const UPSTREAM_ASSERTION_TTL_MS = 10 * 60 * 1_000;
 
 export type CanvasAccount = {
     id: string;
@@ -110,7 +111,7 @@ export class SessionService {
         };
         const sessionHash = hashToken(token);
         this.repository.createSession(account, sessionHash, session.expiresAt);
-        if (upstreamAccessToken?.trim()) this.upstreamAssertions.set(sessionHash, { token: upstreamAccessToken.trim(), expiresAt: session.expiresAt.getTime() });
+        if (upstreamAccessToken?.trim()) this.upstreamAssertions.set(sessionHash, { token: upstreamAccessToken.trim(), expiresAt: Math.min(session.expiresAt.getTime(), now.getTime() + UPSTREAM_ASSERTION_TTL_MS) });
         return { token, session };
     }
 

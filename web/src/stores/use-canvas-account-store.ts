@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 import { canvasBff, CanvasBffError, type CanvasAccount } from "@/services/api/canvas-bff";
+import { useCanvasProviderStore } from "@/stores/use-canvas-provider-store";
 
 export type CanvasAccountStatus = "unknown" | "loading" | "authenticated" | "unauthenticated" | "error";
 
@@ -15,7 +16,7 @@ type CanvasAccountStore = {
     clear: () => void;
 };
 
-export const useCanvasAccountStore = create<CanvasAccountStore>()((set) => ({
+export const useCanvasAccountStore = create<CanvasAccountStore>()((set, get) => ({
     status: "unknown",
     account: null,
     sessionExpiresAt: null,
@@ -39,6 +40,7 @@ export const useCanvasAccountStore = create<CanvasAccountStore>()((set) => ({
         set({ status: "loading", error: null });
         try {
             const session = await canvasBff.verifySub2ApiToken(token);
+            if (get().account && get().account?.sub2ApiUserId !== session.account.sub2ApiUserId) useCanvasProviderStore.getState().clear();
             set({ status: "authenticated", account: session.account, sessionExpiresAt: session.sessionExpiresAt, error: null });
             return true;
         } catch (error) {
@@ -50,10 +52,12 @@ export const useCanvasAccountStore = create<CanvasAccountStore>()((set) => ({
         try {
             await canvasBff.logout();
         } finally {
+            useCanvasProviderStore.getState().clear();
             set({ status: "unauthenticated", account: null, sessionExpiresAt: null, error: null });
         }
     },
     clear: () => {
+        useCanvasProviderStore.getState().clear();
         set({ status: "unauthenticated", account: null, sessionExpiresAt: null, error: null });
     },
 }));
