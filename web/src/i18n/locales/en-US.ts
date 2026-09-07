@@ -92,7 +92,7 @@ export default {
         importFailed: "Import failed. Select a valid asset package.",
         deleted: "Asset deleted",
         packageName: "my-assets.zip",
-        kinds: { text: "Text", image: "Image", video: "Video" },
+        kinds: { text: "Text", image: "Image", video: "Video", audio: "Audio" },
         fields: {
             title: "Title",
             titleRequired: "Enter a title",
@@ -652,6 +652,7 @@ export default {
     },
     locale: {
         zhCN: "简体中文",
+        viVN: "Vietnamese",
         enUS: "English",
     },
 };
