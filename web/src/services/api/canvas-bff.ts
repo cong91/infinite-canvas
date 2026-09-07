@@ -87,29 +87,14 @@ export class CanvasBffError extends Error {
 
 const configuredCanvasBffUrl = (import.meta.env.VITE_CANVAS_BFF_URL || "/api").trim().replace(/\/+$/, "");
 const canvasBffUrl = configuredCanvasBffUrl.endsWith("/api") ? configuredCanvasBffUrl : `${configuredCanvasBffUrl}/api`;
-let sub2ApiAccessToken: string | null = null;
-
-/** Keep the Sub2API assertion in JS memory only for the current tab handoff. */
-export function setCanvasSub2ApiAccessToken(token: string | null) {
-    sub2ApiAccessToken = token?.trim() || null;
-}
-
-export function clearCanvasSub2ApiAccessToken() {
-    sub2ApiAccessToken = null;
-}
-
-export function getCanvasSub2ApiAccessToken() {
-    return sub2ApiAccessToken;
-}
 
 export const canvasBff = {
     getSession: () => request<CanvasSession>("/v1/session"),
     verifySub2ApiToken: (accessToken: string) => request<CanvasSession>("/v1/sso/verify", { method: "POST", accessToken }),
     logout: () => request<{ ok: true }>("/v1/logout", { method: "POST" }),
     listProviders: () => request<CanvasProvider[]>("/v1/providers"),
-    getProviderCatalog: () => request<ProviderCatalog>("/v1/providers/catalog", { accessToken: sub2ApiAccessToken }),
-    createProvider: (input: { name: string; providerType?: string; model?: string; group?: string; channel?: string; catalogKeyId?: string; secret?: string }) =>
-        request<CanvasProvider>("/v1/providers", { method: "POST", body: input, accessToken: input.catalogKeyId ? sub2ApiAccessToken : undefined }),
+    getProviderCatalog: () => request<ProviderCatalog>("/v1/providers/catalog"),
+    createProvider: (input: { name: string; providerType?: string; model?: string; group?: string; channel?: string; catalogKeyId?: string; secret?: string }) => request<CanvasProvider>("/v1/providers", { method: "POST", body: input }),
     updateProvider: (providerId: string, input: { name?: string; model?: string; group?: string; channel?: string; status?: "active" | "disabled" }) =>
         request<CanvasProvider>(`/v1/providers/${encodeURIComponent(providerId)}`, { method: "PATCH", body: input }),
     deleteProvider: (providerId: string) => request<void>(`/v1/providers/${encodeURIComponent(providerId)}`, { method: "DELETE" }),

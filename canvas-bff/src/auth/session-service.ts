@@ -21,6 +21,7 @@ export type CanvasSession = {
 };
 
 type SessionRecord = CanvasSession & { sessionHash: string; revokedAt?: Date };
+type UpstreamAssertion = { token: string; expiresAt: number };
 
 export class InMemorySessionRepository {
     private readonly accounts = new Map<string, CanvasAccount>();
@@ -83,6 +84,8 @@ export class InMemorySessionRepository {
 
 export class SessionService {
     private readonly repository: InMemorySessionRepository;
+    // The Sub2API assertion is held only in process memory for user-facing catalog calls.
+    private readonly upstreamAssertions = new Map<string, UpstreamAssertion>();
     private readonly sessionTtlMs: number;
     private readonly now: () => number;
 
@@ -96,7 +99,7 @@ export class SessionService {
         return this.repository.upsertAccount(identity);
     }
 
-    createSession(account: CanvasAccount): { token: string; session: CanvasSession } {
+    createSession(account: CanvasAccount, upstreamAccessToken?: string): { token: string; session: CanvasSession } {
         const token = randomBytes(32).toString("base64url");
         const now = new Date(this.now());
         const session: CanvasSession = {
@@ -105,7 +108,9 @@ export class SessionService {
             lastSeenAt: now,
             expiresAt: new Date(now.getTime() + this.sessionTtlMs),
         };
-        this.repository.createSession(account, hashToken(token), session.expiresAt);
+        const sessionHash = hashToken(token);
+        this.repository.createSession(account, sessionHash, session.expiresAt);
+        if (upstreamAccessToken?.trim()) this.upstreamAssertions.set(sessionHash, { token: upstreamAccessToken.trim(), expiresAt: session.expiresAt.getTime() });
         return { token, session };
     }
 
@@ -113,7 +118,10 @@ export class SessionService {
         if (!token.trim()) return null;
         const sessionHash = hashToken(token);
         const record = this.repository.getSession(sessionHash);
-        if (!record || record.revokedAt || record.expiresAt.getTime() <= this.now()) return null;
+        if (!record || record.revokedAt || record.expiresAt.getTime() <= this.now()) {
+            this.upstreamAssertions.delete(sessionHash);
+            return null;
+        }
         const lastSeenAt = new Date(this.now());
         this.repository.touchSession(sessionHash, lastSeenAt);
         return {
@@ -126,7 +134,20 @@ export class SessionService {
 
     revokeSession(token: string): boolean {
         if (!token.trim()) return false;
-        return this.repository.revokeSession(hashToken(token), new Date(this.now()));
+        const sessionHash = hashToken(token);
+        this.upstreamAssertions.delete(sessionHash);
+        return this.repository.revokeSession(sessionHash, new Date(this.now()));
+    }
+
+    getUpstreamAccessToken(canvasSessionToken: string): string | null {
+        if (!canvasSessionToken.trim() || !this.resolveSession(canvasSessionToken)) return null;
+        const sessionHash = hashToken(canvasSessionToken);
+        const assertion = this.upstreamAssertions.get(sessionHash);
+        if (!assertion || assertion.expiresAt <= this.now()) {
+            this.upstreamAssertions.delete(sessionHash);
+            return null;
+        }
+        return assertion.token;
     }
 }
 

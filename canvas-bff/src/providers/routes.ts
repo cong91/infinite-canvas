@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { ProviderSecretBox } from "../crypto/secret-box.js";
 import { HttpError } from "../http/errors.js";
-import { requireSessionMiddleware, type AuthenticatedContext } from "../auth/routes.js";
+import { readCanvasSessionToken, requireSessionMiddleware, type AuthenticatedContext } from "../auth/routes.js";
 import { InMemoryProviderRepository, type ProviderRecord, type ProviderRepository } from "./repository.js";
 import { Sub2ApiCatalogAdapter } from "./sub2api-catalog.js";
 
@@ -39,7 +39,7 @@ export function createProviderRouter(options: ProviderRouteOptions): Router {
     const authenticated = requireSessionMiddleware(options.sessionService);
 
     router.get("/api/v1/providers/catalog", authenticated, asyncHandler(async (request, response) => {
-        const accessToken = readBearerToken(request);
+        const accessToken = getUpstreamAccessToken(options, request);
         const catalog = await options.catalog.listCatalog(accessToken);
         response.json({ data: catalog, requestId: response.locals.requestId });
     }));
@@ -62,7 +62,7 @@ export function createProviderRouter(options: ProviderRouteOptions): Router {
         let secret = body.secret;
         let catalogItem: { id: string; providerType?: string; model?: string; group?: string; channel?: string } | undefined;
         if (body.catalogKeyId) {
-            const accessToken = readBearerToken(request);
+            const accessToken = getUpstreamAccessToken(options, request);
             const resolved = await options.catalog.getApiKeySecret(accessToken, body.catalogKeyId);
             secret = resolved.secret;
             catalogItem = resolved.item;
@@ -138,10 +138,11 @@ function getAccount(value: unknown): AuthenticatedContext["account"] {
     return (value as AuthenticatedContext).account;
 }
 
-function readBearerToken(request: Request): string {
-    const match = /^Bearer\s+(.+)$/i.exec(request.header("authorization") || "");
-    if (!match?.[1]?.trim()) throw new HttpError(401, "SUB2API_TOKEN_REQUIRED", "A Sub2API access token is required for catalog access");
-    return match[1].trim();
+function getUpstreamAccessToken(options: ProviderRouteOptions, request: Request): string {
+    const sessionToken = readCanvasSessionToken(request);
+    const accessToken = sessionToken ? options.sessionService.getUpstreamAccessToken(sessionToken) : null;
+    if (!accessToken) throw new HttpError(401, "SUB2API_TOKEN_REQUIRED", "Sub2API catalog session is unavailable");
+    return accessToken;
 }
 
 function parseBody<T extends z.ZodTypeAny>(schema: T, value: unknown): z.output<T> {

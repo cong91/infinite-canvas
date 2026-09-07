@@ -25,7 +25,7 @@ export function createAuthRouter(options: AuthRouteOptions): Router {
             throw new HttpError(403, "SUB2API_ACCOUNT_INACTIVE", "Sub2API account is not active");
         }
         const account = options.sessionService.upsertAccount(identity);
-        const created = options.sessionService.createSession(account);
+        const created = options.sessionService.createSession(account, accessToken);
         setSessionCookie(response, created.token, created.session.expiresAt);
         response.status(200).json({
             data: {
@@ -94,6 +94,10 @@ function readCookie(request: Request, name: string): string | null {
         }
     }
     return null;
+}
+
+export function readCanvasSessionToken(request: Request): string | null {
+    return readCookie(request, SESSION_COOKIE_NAME);
 }
 
 function setSessionCookie(response: Response, token: string, expiresAt: Date): void {

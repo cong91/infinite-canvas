@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-import { canvasBff, clearCanvasSub2ApiAccessToken, setCanvasSub2ApiAccessToken, CanvasBffError, type CanvasAccount } from "@/services/api/canvas-bff";
+import { canvasBff, CanvasBffError, type CanvasAccount } from "@/services/api/canvas-bff";
 
 export type CanvasAccountStatus = "unknown" | "loading" | "authenticated" | "unauthenticated" | "error";
 
@@ -39,11 +39,9 @@ export const useCanvasAccountStore = create<CanvasAccountStore>()((set) => ({
         set({ status: "loading", error: null });
         try {
             const session = await canvasBff.verifySub2ApiToken(token);
-            setCanvasSub2ApiAccessToken(token);
             set({ status: "authenticated", account: session.account, sessionExpiresAt: session.sessionExpiresAt, error: null });
             return true;
         } catch (error) {
-            clearCanvasSub2ApiAccessToken();
             set({ status: "unauthenticated", account: null, sessionExpiresAt: null, error: error instanceof Error ? error.message : "Sub2API session could not be verified" });
             return false;
         }
@@ -52,12 +50,10 @@ export const useCanvasAccountStore = create<CanvasAccountStore>()((set) => ({
         try {
             await canvasBff.logout();
         } finally {
-            clearCanvasSub2ApiAccessToken();
             set({ status: "unauthenticated", account: null, sessionExpiresAt: null, error: null });
         }
     },
     clear: () => {
-        clearCanvasSub2ApiAccessToken();
         set({ status: "unauthenticated", account: null, sessionExpiresAt: null, error: null });
     },
 }));

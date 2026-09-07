@@ -57,3 +57,39 @@ test("provider CRUD is scoped to the Canvas session account and never returns ra
         await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     }
 });
+
+test("catalog uses the server-side session bridge without requiring a browser bearer token", async () => {
+    const upstreamHeaders: string[] = [];
+    const sessions = new SessionService(new InMemorySessionRepository());
+    const catalog = new Sub2ApiCatalogAdapter(config.sub2ApiBaseUrl, async (_input, init) => {
+        upstreamHeaders.push(new Headers(init?.headers).get("authorization") || "");
+        return new Response(JSON.stringify({ data: [{ id: "key-1", name: "OpenAI", key: "sk-upstream-secret" }] }), { status: 200 });
+    });
+    const app = createApp(config, {
+        auth: {
+            canvasOrigin: config.canvasOrigin,
+            sub2ApiClient: new Sub2ApiClient(config.sub2ApiBaseUrl, async () => new Response(JSON.stringify({ data: { id: "catalog-user", username: "Catalog User", status: "active" } }), { status: 200 })),
+            sessionService: sessions,
+        },
+        workspace: { providers: { catalog, secretBox: new ProviderSecretBox(Buffer.alloc(32, 4)), providers: new InMemoryProviderRepository() } },
+    });
+    const server = app.listen(0);
+    await new Promise<void>((resolve) => server.once("listening", resolve));
+    const address = server.address();
+    assert(address && typeof address !== "string");
+    const url = `http://127.0.0.1:${address.port}`;
+    try {
+        const login = await fetch(`${url}/api/v1/sso/verify`, { method: "POST", headers: { Origin: config.canvasOrigin, Authorization: "Bearer catalog-jwt", "Content-Type": "application/json" }, body: "{}" });
+        const cookie = (login.headers.get("set-cookie") || "").split(";", 1)[0];
+        const response = await fetch(`${url}/api/v1/providers/catalog`, { headers: { Origin: config.canvasOrigin, Cookie: cookie } });
+        assert.equal(response.status, 200);
+        const body = await response.json() as { data: { keys: Array<{ maskedKey?: string }> } };
+        assert.equal(body.data.keys[0]?.maskedKey, "****cret");
+        assert.equal(JSON.stringify(body).includes("sk-upstream-secret"), false);
+        assert.equal(upstreamHeaders.length, 4);
+        assert(upstreamHeaders.every((header) => header === "Bearer catalog-jwt"));
+        assert.equal(response.headers.get("access-control-allow-credentials"), "true");
+    } finally {
+        await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
+});
