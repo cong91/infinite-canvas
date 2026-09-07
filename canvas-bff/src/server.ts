@@ -4,6 +4,9 @@ import express, { type NextFunction, type Request, type Response } from "express
 
 import { loadConfig, type CanvasBffConfig } from "./config.js";
 import { HttpError, toErrorEnvelope } from "./http/errors.js";
+import { createAuthRouter, type AuthRouteOptions } from "./auth/routes.js";
+import { InMemorySessionRepository, SessionService } from "./auth/session-service.js";
+import { Sub2ApiClient } from "./auth/sub2api-client.js";
 
 export function isAllowedOrigin(requestOrigin: string | undefined, canvasOrigin: string): boolean {
     if (!requestOrigin) return true;
@@ -14,7 +17,11 @@ export function isAllowedOrigin(requestOrigin: string | undefined, canvasOrigin:
     }
 }
 
-export function createApp(config: CanvasBffConfig) {
+export type AppDependencies = {
+    auth?: AuthRouteOptions;
+};
+
+export function createApp(config: CanvasBffConfig, dependencies: AppDependencies = {}) {
     const app = express();
     app.disable("x-powered-by");
     app.use((req, res, next) => {
@@ -37,6 +44,12 @@ export function createApp(config: CanvasBffConfig) {
         next();
     });
     app.use(express.json({ limit: "1mb" }));
+    const auth = dependencies.auth ?? {
+        canvasOrigin: config.canvasOrigin,
+        sub2ApiClient: new Sub2ApiClient(config.sub2ApiBaseUrl),
+        sessionService: new SessionService(new InMemorySessionRepository()),
+    };
+    app.use(createAuthRouter(auth));
     app.get("/health", (_req, res) => res.json({ data: { service: "canvas-bff", status: "ok" }, requestId: res.locals.requestId }));
     app.get("/ready", (_req, res) => res.json({ data: { service: "canvas-bff", status: "ready" }, requestId: res.locals.requestId }));
     app.use((_req, _res, next) => next(new HttpError(404, "NOT_FOUND", "Route not found")));
