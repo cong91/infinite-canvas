@@ -19,11 +19,11 @@ export type ProviderRecord = {
 };
 
 export interface ProviderRepository {
-    list(accountId: string): ProviderRecord[];
-    get(accountId: string, id: string): ProviderRecord | undefined;
-    create(input: Omit<ProviderRecord, "id" | "createdAt" | "updatedAt">): ProviderRecord;
-    update(accountId: string, id: string, patch: Partial<Pick<ProviderRecord, "name" | "model" | "group" | "channel" | "status">>): ProviderRecord | undefined;
-    delete(accountId: string, id: string): boolean;
+    list(accountId: string): ProviderRecord[] | Promise<ProviderRecord[]>;
+    get(accountId: string, id: string): ProviderRecord | undefined | Promise<ProviderRecord | undefined>;
+    create(input: Omit<ProviderRecord, "id" | "createdAt" | "updatedAt">): ProviderRecord | Promise<ProviderRecord>;
+    update(accountId: string, id: string, patch: Partial<Pick<ProviderRecord, "name" | "model" | "group" | "channel" | "status">>): ProviderRecord | undefined | Promise<ProviderRecord | undefined>;
+    delete(accountId: string, id: string): boolean | Promise<boolean>;
 }
 
 export class InMemoryProviderRepository implements ProviderRepository {

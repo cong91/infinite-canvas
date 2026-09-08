@@ -24,8 +24,8 @@ export function createAuthRouter(options: AuthRouteOptions): Router {
         if (identity.status.toLowerCase() !== "active") {
             throw new HttpError(403, "SUB2API_ACCOUNT_INACTIVE", "Sub2API account is not active");
         }
-        const account = options.sessionService.upsertAccount(identity);
-        const created = options.sessionService.createSession(account, accessToken);
+        const account = await options.sessionService.upsertAccount(identity);
+        const created = await options.sessionService.createSession(account, accessToken);
         setSessionCookie(response, created.token, created.session.expiresAt);
         response.status(200).json({
             data: {
@@ -37,7 +37,7 @@ export function createAuthRouter(options: AuthRouteOptions): Router {
     }));
 
     router.get("/api/v1/session", asyncHandler(async (request, response) => {
-        const session = requireSession(options.sessionService, request);
+        const session = await requireSession(options.sessionService, request);
         response.status(200).json({
             data: {
                 account: publicAccount(session.account),
@@ -49,7 +49,7 @@ export function createAuthRouter(options: AuthRouteOptions): Router {
 
     router.post("/api/v1/logout", requireCanvasOrigin(options.canvasOrigin), asyncHandler(async (request, response) => {
         const token = readCookie(request, SESSION_COOKIE_NAME);
-        if (token) options.sessionService.revokeSession(token);
+        if (token) await options.sessionService.revokeSession(token);
         clearSessionCookie(response);
         response.status(200).json({ data: { ok: true }, requestId: response.locals.requestId });
     }));
@@ -58,17 +58,15 @@ export function createAuthRouter(options: AuthRouteOptions): Router {
 }
 
 export const requireSessionMiddleware = (sessionService: SessionService): RequestHandler => (request, response, next) => {
-    try {
-        response.locals.auth = requireSession(sessionService, request);
+    void requireSession(sessionService, request).then((auth) => {
+        response.locals.auth = auth;
         next();
-    } catch (error) {
-        next(error);
-    }
+    }).catch(next);
 };
 
-function requireSession(sessionService: SessionService, request: Request): AuthenticatedContext {
+async function requireSession(sessionService: SessionService, request: Request): Promise<AuthenticatedContext> {
     const token = readCookie(request, SESSION_COOKIE_NAME);
-    const session = token ? sessionService.resolveSession(token) : null;
+    const session = token ? await sessionService.resolveSession(token) : null;
     if (!session) throw new HttpError(401, "SESSION_REQUIRED", "Canvas session is required");
     return { account: session.account, sessionExpiresAt: session.expiresAt };
 }

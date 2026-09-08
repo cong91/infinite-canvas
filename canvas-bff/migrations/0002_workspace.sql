@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS canvas_providers (
     secret_auth_tag TEXT NOT NULL,
     secret_key_version TEXT NOT NULL,
     secret_fingerprint TEXT NOT NULL,
+    secret_masked TEXT NOT NULL DEFAULT '****',
     status TEXT NOT NULL DEFAULT 'active',
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP

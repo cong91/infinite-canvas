@@ -11,23 +11,23 @@ const account: CanvasAccount = {
     status: "active",
 };
 
-test("session expires at its server-side deadline", () => {
+test("session expires at its server-side deadline", async () => {
     let now = 1_000;
     const repository = new InMemorySessionRepository(() => now);
     const service = new SessionService(repository, { sessionTtlMs: 1_000, now: () => now });
-    const created = service.createSession(account);
+    const created = await service.createSession(account);
 
-    assert.equal(service.resolveSession(created.token)?.account.id, account.id);
+    assert.equal((await service.resolveSession(created.token))?.account.id, account.id);
     now = 2_000;
-    assert.equal(service.resolveSession(created.token), null);
+    assert.equal(await service.resolveSession(created.token), null);
 });
 
-test("revoked sessions cannot be resolved and session records never retain an assertion token", () => {
+test("revoked sessions cannot be resolved and session records never retain an assertion token", async () => {
     const repository = new InMemorySessionRepository();
     const service = new SessionService(repository, { sessionTtlMs: 10_000 });
-    const created = service.createSession(account);
+    const created = await service.createSession(account);
 
-    assert.equal(service.revokeSession(created.token), true);
-    assert.equal(service.resolveSession(created.token), null);
-    assert.equal(repository.containsRawToken(created.token), false);
+    assert.equal(await service.revokeSession(created.token), true);
+    assert.equal(await service.resolveSession(created.token), null);
+    assert.equal(await repository.containsRawToken(created.token), false);
 });

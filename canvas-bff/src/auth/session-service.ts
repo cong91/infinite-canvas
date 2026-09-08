@@ -21,8 +21,18 @@ export type CanvasSession = {
     lastSeenAt: Date;
 };
 
-type SessionRecord = CanvasSession & { sessionHash: string; revokedAt?: Date };
+export type SessionRecord = CanvasSession & { sessionHash: string; revokedAt?: Date };
 type UpstreamAssertion = { token: string; expiresAt: number };
+
+export interface SessionRepository {
+    nowMs(): number;
+    upsertAccount(identity: Sub2ApiIdentity): CanvasAccount | Promise<CanvasAccount>;
+    createSession(account: CanvasAccount, sessionHash: string, expiresAt: Date): void | Promise<void>;
+    getSession(sessionHash: string): SessionRecord | undefined | Promise<SessionRecord | undefined>;
+    touchSession(sessionHash: string, lastSeenAt: Date): void | Promise<void>;
+    revokeSession(sessionHash: string, revokedAt: Date): boolean | Promise<boolean>;
+    containsRawToken(token: string): boolean | Promise<boolean>;
+}
 
 export class InMemorySessionRepository {
     private readonly accounts = new Map<string, CanvasAccount>();
@@ -84,24 +94,24 @@ export class InMemorySessionRepository {
 }
 
 export class SessionService {
-    private readonly repository: InMemorySessionRepository;
+    private readonly repository: SessionRepository;
     // The Sub2API assertion is held only in process memory for user-facing catalog calls.
     private readonly upstreamAssertions = new Map<string, UpstreamAssertion>();
     private readonly upstreamAssertionTimers = new Map<string, ReturnType<typeof setTimeout>>();
     private readonly sessionTtlMs: number;
     private readonly now: () => number;
 
-    constructor(repository: InMemorySessionRepository, options: { sessionTtlMs?: number; now?: () => number } = {}) {
+    constructor(repository: SessionRepository, options: { sessionTtlMs?: number; now?: () => number } = {}) {
         this.repository = repository;
         this.sessionTtlMs = options.sessionTtlMs ?? DEFAULT_SESSION_TTL_MS;
         this.now = options.now ?? (() => repository.nowMs());
     }
 
-    upsertAccount(identity: Sub2ApiIdentity): CanvasAccount {
+    async upsertAccount(identity: Sub2ApiIdentity): Promise<CanvasAccount> {
         return this.repository.upsertAccount(identity);
     }
 
-    createSession(account: CanvasAccount, upstreamAccessToken?: string): { token: string; session: CanvasSession } {
+    async createSession(account: CanvasAccount, upstreamAccessToken?: string): Promise<{ token: string; session: CanvasSession }> {
         const token = randomBytes(32).toString("base64url");
         const now = new Date(this.now());
         const session: CanvasSession = {
@@ -111,7 +121,7 @@ export class SessionService {
             expiresAt: new Date(now.getTime() + this.sessionTtlMs),
         };
         const sessionHash = hashToken(token);
-        this.repository.createSession(account, sessionHash, session.expiresAt);
+        await this.repository.createSession(account, sessionHash, session.expiresAt);
         if (upstreamAccessToken?.trim()) {
             const expiresAt = Math.min(session.expiresAt.getTime(), now.getTime() + UPSTREAM_ASSERTION_TTL_MS);
             this.upstreamAssertions.set(sessionHash, { token: upstreamAccessToken.trim(), expiresAt });
@@ -122,16 +132,16 @@ export class SessionService {
         return { token, session };
     }
 
-    resolveSession(token: string): CanvasSession | null {
+    async resolveSession(token: string): Promise<CanvasSession | null> {
         if (!token.trim()) return null;
         const sessionHash = hashToken(token);
-        const record = this.repository.getSession(sessionHash);
+        const record = await this.repository.getSession(sessionHash);
         if (!record || record.revokedAt || record.expiresAt.getTime() <= this.now()) {
             this.clearUpstreamAssertion(sessionHash);
             return null;
         }
         const lastSeenAt = new Date(this.now());
-        this.repository.touchSession(sessionHash, lastSeenAt);
+        await this.repository.touchSession(sessionHash, lastSeenAt);
         return {
             account: { ...record.account },
             createdAt: new Date(record.createdAt),
@@ -140,15 +150,15 @@ export class SessionService {
         };
     }
 
-    revokeSession(token: string): boolean {
+    async revokeSession(token: string): Promise<boolean> {
         if (!token.trim()) return false;
         const sessionHash = hashToken(token);
         this.clearUpstreamAssertion(sessionHash);
         return this.repository.revokeSession(sessionHash, new Date(this.now()));
     }
 
-    getUpstreamAccessToken(canvasSessionToken: string): string | null {
-        if (!canvasSessionToken.trim() || !this.resolveSession(canvasSessionToken)) return null;
+    async getUpstreamAccessToken(canvasSessionToken: string): Promise<string | null> {
+        if (!canvasSessionToken.trim() || !(await this.resolveSession(canvasSessionToken))) return null;
         const sessionHash = hashToken(canvasSessionToken);
         const assertion = this.upstreamAssertions.get(sessionHash);
         if (!assertion || assertion.expiresAt <= this.now()) {

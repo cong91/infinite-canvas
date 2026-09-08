@@ -29,19 +29,19 @@ export function createGenerationRouter(options: GenerationRouteOptions): Router 
 
     router.get("/api/v1/generations", authenticated, asyncHandler(async (request, response) => {
         const account = getAccount(response.locals.auth);
-        response.json({ data: await Promise.all(options.service.list(account.id).map((record) => toPublicGeneration(record, account.id, options))), requestId: response.locals.requestId });
+        response.json({ data: await Promise.all((await options.service.list(account.id)).map((record) => toPublicGeneration(record, account.id, options))), requestId: response.locals.requestId });
     }));
 
     router.post("/api/v1/generations", authenticated, asyncHandler(async (request, response) => {
         const account = getAccount(response.locals.auth);
         const body = parseBody(generationBody, request.body);
-        const generation = options.service.create(account.id, body as CreateGenerationInput);
+        const generation = await options.service.create(account.id, body as CreateGenerationInput);
         response.status(201).json({ data: await toPublicGeneration(generation, account.id, options), requestId: response.locals.requestId });
     }));
 
     router.get("/api/v1/generations/:generationId", authenticated, asyncHandler(async (request, response) => {
         const account = getAccount(response.locals.auth);
-        const generation = options.service.get(account.id, String(request.params.generationId));
+        const generation = await options.service.get(account.id, String(request.params.generationId));
         if (!generation) throw new HttpError(404, "GENERATION_NOT_FOUND", "Generation was not found");
         response.json({ data: await toPublicGeneration(generation, account.id, options), requestId: response.locals.requestId });
     }));
@@ -49,16 +49,16 @@ export function createGenerationRouter(options: GenerationRouteOptions): Router 
     router.post("/api/v1/generations/:generationId/cancel", authenticated, asyncHandler(async (request, response) => {
         const account = getAccount(response.locals.auth);
         const id = String(request.params.generationId);
-        if (!options.service.get(account.id, id)) throw new HttpError(404, "GENERATION_NOT_FOUND", "Generation was not found");
-        if (!options.service.cancel(account.id, id)) throw new HttpError(409, "GENERATION_NOT_CANCELLABLE", "Generation cannot be cancelled");
-        response.json({ data: await toPublicGeneration(options.service.get(account.id, id)!, account.id, options), requestId: response.locals.requestId });
+        if (!(await options.service.get(account.id, id))) throw new HttpError(404, "GENERATION_NOT_FOUND", "Generation was not found");
+        if (!(await options.service.cancel(account.id, id))) throw new HttpError(409, "GENERATION_NOT_CANCELLABLE", "Generation cannot be cancelled");
+        response.json({ data: await toPublicGeneration((await options.service.get(account.id, id))!, account.id, options), requestId: response.locals.requestId });
     }));
 
     return router;
 }
 
 async function toPublicGeneration(record: GenerationRecord, accountId: string, options: GenerationRouteOptions) {
-    const asset = record.outputAssetId ? options.assets.get(accountId, record.outputAssetId) : undefined;
+    const asset = record.outputAssetId ? await options.assets.get(accountId, record.outputAssetId) : undefined;
     const signedUrl = asset?.objectKey ? await options.objectStorage.createSignedReadUrl(accountId, asset.objectKey, 300) : undefined;
     return {
         id: record.id,

@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS canvas_generations (
     provider_id TEXT NOT NULL REFERENCES canvas_providers(id) ON DELETE RESTRICT,
     kind TEXT NOT NULL,
     input JSONB NOT NULL DEFAULT '{}'::jsonb,
+    input_hash TEXT NOT NULL DEFAULT '',
     client_request_id TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'queued',
     progress INTEGER NOT NULL DEFAULT 0,

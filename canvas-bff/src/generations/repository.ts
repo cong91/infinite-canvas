@@ -25,18 +25,18 @@ export type GenerationRecord = {
 };
 
 export interface GenerationRepository {
-    list(accountId: string): GenerationRecord[];
-    get(accountId: string, id: string): GenerationRecord | undefined;
-    findByClientRequest(accountId: string, clientRequestId: string): GenerationRecord | undefined;
-    create(input: Omit<GenerationRecord, "id" | "createdAt" | "updatedAt">): GenerationRecord;
-    cancel(accountId: string, id: string): boolean;
-    claimNext(workerId: string, now: Date, leaseMs: number): GenerationRecord | undefined;
-    heartbeat(id: string, workerId: string, expiresAt: Date): boolean;
-    setProviderTask(id: string, providerTaskId: string, workerId: string, leaseExpiresAt: Date): boolean;
-    updateProgress(id: string, workerId: string, progress: number): boolean;
-    releaseForRetry(id: string, workerId: string, errorCode: string): boolean;
-    complete(id: string, workerId: string, outputAssetId: string): boolean;
-    fail(id: string, workerId: string, errorCode: string): boolean;
+    list(accountId: string): GenerationRecord[] | Promise<GenerationRecord[]>;
+    get(accountId: string, id: string): GenerationRecord | undefined | Promise<GenerationRecord | undefined>;
+    findByClientRequest(accountId: string, clientRequestId: string): GenerationRecord | undefined | Promise<GenerationRecord | undefined>;
+    create(input: Omit<GenerationRecord, "id" | "createdAt" | "updatedAt">): GenerationRecord | Promise<GenerationRecord>;
+    cancel(accountId: string, id: string): boolean | Promise<boolean>;
+    claimNext(workerId: string, now: Date, leaseMs: number): GenerationRecord | undefined | Promise<GenerationRecord | undefined>;
+    heartbeat(id: string, workerId: string, expiresAt: Date): boolean | Promise<boolean>;
+    setProviderTask(id: string, providerTaskId: string, workerId: string, leaseExpiresAt: Date): boolean | Promise<boolean>;
+    updateProgress(id: string, workerId: string, progress: number): boolean | Promise<boolean>;
+    releaseForRetry(id: string, workerId: string, errorCode: string): boolean | Promise<boolean>;
+    complete(id: string, workerId: string, outputAssetId: string): boolean | Promise<boolean>;
+    fail(id: string, workerId: string, errorCode: string): boolean | Promise<boolean>;
 }
 
 export class InMemoryGenerationRepository implements GenerationRepository {

@@ -2,7 +2,9 @@
 
 ## Unreleased
 
-+ [新增] 增加独立的 Canvas BFF Docker 测试 stack，包含 PostgreSQL 迁移、MinIO bucket 初始化和健康检查脚本；当前仅用于基础设施 smoke test。
+- [新增] Canvas BFF 非测试环境改用 PostgreSQL 保存账户/项目/Provider/素材/生成记录，并使用 MinIO 保存媒体对象。
+
++ [新增] 增加独立的 Canvas BFF Docker stack，包含 PostgreSQL 迁移、MinIO bucket 初始化和持久化 readiness smoke test。
 + [新增] Canvas BFF 增加 Sub2API SSO 会话、账号级 provider/project/asset/generation API、加密 provider key 与可恢复的 generation worker 边界；JWT 仅在 BFF 进程内用于 catalog/key 解析，不写入浏览器或数据库。
 + [新增] 已登录 Canvas 的项目列表、创建、重命名、删除和画布自动保存改为通过 BFF 按账号隔离，并使用 revision 防止旧页面覆盖新数据。
 + [新增] 提示词详情支持调用已配置的文本模型翻译成越南语，并可在原文与译文之间切换，复制和生成仍使用原始提示词。

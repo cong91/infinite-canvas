@@ -30,14 +30,14 @@ export class GenerationService {
         this.providers = options.providers;
     }
 
-    create(accountId: string, input: CreateGenerationInput): GenerationRecord {
-        const project = this.projects.get(accountId, input.projectId);
+    async create(accountId: string, input: CreateGenerationInput): Promise<GenerationRecord> {
+        const project = await this.projects.get(accountId, input.projectId);
         if (!project) throw new HttpError(404, "PROJECT_NOT_FOUND", "Project was not found");
-        const provider = this.providers.get(accountId, input.providerId);
+        const provider = await this.providers.get(accountId, input.providerId);
         if (!provider || provider.status !== "active") throw new HttpError(404, "PROVIDER_NOT_FOUND", "Provider was not found");
         if (!input.clientRequestId.trim()) throw new HttpError(400, "INVALID_REQUEST", "clientRequestId is required");
         const inputHash = hashInput(input);
-        const existing = this.generations.findByClientRequest(accountId, input.clientRequestId);
+        const existing = await this.generations.findByClientRequest(accountId, input.clientRequestId);
         if (existing) {
             if (existing.inputHash !== inputHash) throw new GenerationConflictError();
             return existing;
@@ -45,15 +45,15 @@ export class GenerationService {
         return this.generations.create({ ...input, accountId, inputHash, status: "queued", progress: 0, attempt: 0 });
     }
 
-    list(accountId: string): GenerationRecord[] {
+    async list(accountId: string): Promise<GenerationRecord[]> {
         return this.generations.list(accountId);
     }
 
-    get(accountId: string, id: string): GenerationRecord | undefined {
+    async get(accountId: string, id: string): Promise<GenerationRecord | undefined> {
         return this.generations.get(accountId, id);
     }
 
-    cancel(accountId: string, id: string): boolean {
+    async cancel(accountId: string, id: string): Promise<boolean> {
         return this.generations.cancel(accountId, id);
     }
 }

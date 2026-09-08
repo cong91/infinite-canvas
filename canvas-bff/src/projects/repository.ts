@@ -11,11 +11,11 @@ export type ProjectRecord = {
 };
 
 export interface ProjectRepository {
-    list(accountId: string): ProjectRecord[];
-    get(accountId: string, id: string): ProjectRecord | undefined;
-    create(input: Omit<ProjectRecord, "id" | "createdAt" | "updatedAt" | "revision">): ProjectRecord;
-    update(accountId: string, id: string, patch: { name?: string; data?: Record<string, unknown>; revision?: number }): ProjectRecord | undefined;
-    delete(accountId: string, id: string): boolean;
+    list(accountId: string): ProjectRecord[] | Promise<ProjectRecord[]>;
+    get(accountId: string, id: string): ProjectRecord | undefined | Promise<ProjectRecord | undefined>;
+    create(input: Omit<ProjectRecord, "id" | "createdAt" | "updatedAt" | "revision">): ProjectRecord | Promise<ProjectRecord>;
+    update(accountId: string, id: string, patch: { name?: string; data?: Record<string, unknown>; revision?: number }): ProjectRecord | undefined | Promise<ProjectRecord | undefined>;
+    delete(accountId: string, id: string): boolean | Promise<boolean>;
 }
 
 export class InMemoryProjectRepository implements ProjectRepository {

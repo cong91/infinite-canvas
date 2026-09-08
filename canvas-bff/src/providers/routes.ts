@@ -39,22 +39,22 @@ export function createProviderRouter(options: ProviderRouteOptions): Router {
     const authenticated = requireSessionMiddleware(options.sessionService);
 
     router.get("/api/v1/providers/catalog", authenticated, asyncHandler(async (request, response) => {
-        const accessToken = getUpstreamAccessToken(options, request);
+        const accessToken = await getUpstreamAccessToken(options, request);
         const catalog = await options.catalog.listCatalog(accessToken);
         response.json({ data: catalog, requestId: response.locals.requestId });
     }));
 
-    router.get("/api/v1/providers", authenticated, (request, response) => {
+    router.get("/api/v1/providers", authenticated, asyncHandler(async (request, response) => {
         const account = getAccount(response.locals.auth);
-        response.json({ data: options.providers.list(account.id).map(toPublicProvider), requestId: response.locals.requestId });
-    });
+        response.json({ data: (await options.providers.list(account.id)).map(toPublicProvider), requestId: response.locals.requestId });
+    }));
 
-    router.get("/api/v1/providers/:providerId", authenticated, (request, response) => {
+    router.get("/api/v1/providers/:providerId", authenticated, asyncHandler(async (request, response) => {
         const account = getAccount(response.locals.auth);
-        const record = options.providers.get(account.id, String(request.params.providerId));
+        const record = await options.providers.get(account.id, String(request.params.providerId));
         if (!record) throw new HttpError(404, "PROVIDER_NOT_FOUND", "Provider was not found");
         response.json({ data: toPublicProvider(record), requestId: response.locals.requestId });
-    });
+    }));
 
     router.post("/api/v1/providers", authenticated, asyncHandler(async (request, response) => {
         const account = getAccount(response.locals.auth);
@@ -62,19 +62,19 @@ export function createProviderRouter(options: ProviderRouteOptions): Router {
         let secret = body.secret;
         let catalogItem: { id: string; providerType?: string; model?: string; group?: string; channel?: string } | undefined;
         if (body.catalogKeyId) {
-            const accessToken = getUpstreamAccessToken(options, request);
+            const accessToken = await getUpstreamAccessToken(options, request);
             const resolved = await options.catalog.getApiKeySecret(accessToken, body.catalogKeyId);
             secret = resolved.secret;
             catalogItem = resolved.item;
         }
         if (!secret) throw new HttpError(400, "PROVIDER_SECRET_REQUIRED", "Provider secret is required");
         const description = options.secretBox.describe(secret);
-        const existing = body.catalogKeyId && options.providers.list(account.id).find((item) => item.sub2ApiKeyId === body.catalogKeyId);
+        const existing = body.catalogKeyId && (await options.providers.list(account.id)).find((item) => item.sub2ApiKeyId === body.catalogKeyId);
         if (existing) {
             response.status(200).json({ data: toPublicProvider(existing), requestId: response.locals.requestId });
             return;
         }
-        const record = options.providers.create({
+        const record = await options.providers.create({
             accountId: account.id,
             name: body.name,
             providerType: catalogItem?.providerType ?? body.providerType,
@@ -89,20 +89,20 @@ export function createProviderRouter(options: ProviderRouteOptions): Router {
         response.status(201).json({ data: toPublicProvider(record), requestId: response.locals.requestId });
     }));
 
-    router.patch("/api/v1/providers/:providerId", authenticated, (request, response) => {
+    router.patch("/api/v1/providers/:providerId", authenticated, asyncHandler(async (request, response) => {
         const account = getAccount(response.locals.auth);
         const id = String(request.params.providerId);
-        const record = options.providers.update(account.id, id, parseBody(providerPatch, request.body));
+        const record = await options.providers.update(account.id, id, parseBody(providerPatch, request.body));
         if (!record) throw new HttpError(404, "PROVIDER_NOT_FOUND", "Provider was not found");
         response.json({ data: toPublicProvider(record), requestId: response.locals.requestId });
-    });
+    }));
 
-    router.delete("/api/v1/providers/:providerId", authenticated, (request, response) => {
+    router.delete("/api/v1/providers/:providerId", authenticated, asyncHandler(async (request, response) => {
         const account = getAccount(response.locals.auth);
-        const deleted = options.providers.delete(account.id, String(request.params.providerId));
+        const deleted = await options.providers.delete(account.id, String(request.params.providerId));
         if (!deleted) throw new HttpError(404, "PROVIDER_NOT_FOUND", "Provider was not found");
         response.status(204).end();
-    });
+    }));
 
     return router;
 }
@@ -138,9 +138,9 @@ function getAccount(value: unknown): AuthenticatedContext["account"] {
     return (value as AuthenticatedContext).account;
 }
 
-function getUpstreamAccessToken(options: ProviderRouteOptions, request: Request): string {
+async function getUpstreamAccessToken(options: ProviderRouteOptions, request: Request): Promise<string> {
     const sessionToken = readCanvasSessionToken(request);
-    const accessToken = sessionToken ? options.sessionService.getUpstreamAccessToken(sessionToken) : null;
+    const accessToken = sessionToken ? await options.sessionService.getUpstreamAccessToken(sessionToken) : null;
     if (!accessToken) throw new HttpError(401, "SUB2API_TOKEN_REQUIRED", "Sub2API catalog session is unavailable");
     return accessToken;
 }

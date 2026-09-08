@@ -20,15 +20,14 @@ test("generation routes create idempotent records and enforce session ownership"
     const projects = new InMemoryProjectRepository();
     const providers = new InMemoryProviderRepository();
     const assets = new InMemoryAssetRepository();
-    const account = sessions.upsertAccount({ sub2ApiUserId: "user-a", displayName: "User A", status: "active" });
+    const account = await sessions.upsertAccount({ sub2ApiUserId: "user-a", displayName: "User A", status: "active" });
     const project = projects.create({ accountId: account.id, name: "Demo", data: {} });
     const provider = providers.create({ accountId: account.id, name: "Provider", providerType: "openai-compatible", secret: new ProviderSecretBox(Buffer.alloc(32, 1)).encrypt("secret"), secretDescription: { fingerprint: "fingerprint", masked: "****cret" }, status: "active" });
     const generations = new InMemoryGenerationRepository();
     const service = new GenerationService({ generations, projects, providers });
     const app = createApp(config, {
         auth: { canvasOrigin: config.canvasOrigin, sub2ApiClient: new Sub2ApiClient(config.sub2ApiBaseUrl, async () => new Response(JSON.stringify({ data: { id: "user-a", username: "User A", status: "active" } }))), sessionService: sessions },
-        workspace: { projects: { projects }, providers: { catalog: createDefaultProviderOptions(sessions, config.sub2ApiBaseUrl).catalog, secretBox: new ProviderSecretBox(Buffer.alloc(32, 1)), providers }, assets: createDefaultAssetOptions(sessions, projects) },
-        generations: { service },
+        workspace: { projects: { projects }, providers: { catalog: createDefaultProviderOptions(sessions, config.sub2ApiBaseUrl).catalog, secretBox: new ProviderSecretBox(Buffer.alloc(32, 1)), providers }, assets: createDefaultAssetOptions(sessions, projects), generations: { service } },
     });
     const server = app.listen(0);
     await new Promise<void>((resolve) => server.once("listening", resolve));

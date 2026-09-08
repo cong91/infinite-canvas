@@ -84,6 +84,7 @@ services:
       CANVAS_OBJECT_SIGNING_SECRET: ${CANVAS_OBJECT_SIGNING_SECRET:-local-only-object-signing-secret-change-me}
       DATABASE_URL: postgresql://${POSTGRES_USER:-canvas}:${POSTGRES_PASSWORD:-canvas-dev-password}@postgres:5432/${POSTGRES_DB:-canvas}
       S3_ENDPOINT: http://minio:9000
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:19000}
       S3_REGION: ${S3_REGION:-us-east-1}
       S3_BUCKET: ${S3_BUCKET:-canvas-media}
       S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-canvas}

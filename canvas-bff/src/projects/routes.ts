@@ -1,9 +1,9 @@
-import { Router, type Request, type RequestHandler } from "express";
+import { Router, type Request, type RequestHandler, type Response } from "express";
 import { z } from "zod";
 
 import { HttpError } from "../http/errors.js";
 import { requireSessionMiddleware, type AuthenticatedContext } from "../auth/routes.js";
-import { InMemoryProjectRepository, type ProjectRepository } from "./repository.js";
+import { InMemoryProjectRepository, type ProjectRecord, type ProjectRepository } from "./repository.js";
 
 export type ProjectRouteOptions = {
     projects: ProjectRepository;
@@ -17,47 +17,47 @@ export function createProjectRouter(options: ProjectRouteOptions): Router {
     const router = Router();
     const authenticated = requireSessionMiddleware(options.sessionService);
 
-    router.get("/api/v1/projects", authenticated, (_request, response) => {
+    router.get("/api/v1/projects", authenticated, asyncHandler(async (_request, response) => {
         const account = getAccount(response.locals.auth);
-        response.json({ data: options.projects.list(account.id).map(toPublicProject), requestId: response.locals.requestId });
-    });
+        response.json({ data: (await options.projects.list(account.id)).map(toPublicProject), requestId: response.locals.requestId });
+    }));
 
-    router.post("/api/v1/projects", authenticated, (request, response) => {
+    router.post("/api/v1/projects", authenticated, asyncHandler(async (request, response) => {
         const account = getAccount(response.locals.auth);
         const body = parseBody(projectBody, request.body);
-        const project = options.projects.create({ accountId: account.id, name: body.name, data: body.data });
+        const project = await options.projects.create({ accountId: account.id, name: body.name, data: body.data });
         response.status(201).json({ data: toPublicProject(project), requestId: response.locals.requestId });
-    });
+    }));
 
-    router.get("/api/v1/projects/:projectId", authenticated, (request, response) => {
+    router.get("/api/v1/projects/:projectId", authenticated, asyncHandler(async (request, response) => {
         const account = getAccount(response.locals.auth);
-        const project = options.projects.get(account.id, String(request.params.projectId));
+        const project = await options.projects.get(account.id, String(request.params.projectId));
         if (!project) throw new HttpError(404, "PROJECT_NOT_FOUND", "Project was not found");
         response.json({ data: toPublicProject(project), requestId: response.locals.requestId });
-    });
+    }));
 
-    router.patch("/api/v1/projects/:projectId", authenticated, (request, response) => {
+    router.patch("/api/v1/projects/:projectId", authenticated, asyncHandler(async (request, response) => {
         const account = getAccount(response.locals.auth);
         const id = String(request.params.projectId);
-        if (!options.projects.get(account.id, id)) throw new HttpError(404, "PROJECT_NOT_FOUND", "Project was not found");
-        const project = options.projects.update(account.id, id, parseBody(projectPatch, request.body));
+        if (!(await options.projects.get(account.id, id))) throw new HttpError(404, "PROJECT_NOT_FOUND", "Project was not found");
+        const project = await options.projects.update(account.id, id, parseBody(projectPatch, request.body));
         if (!project) throw new HttpError(409, "PROJECT_REVISION_CONFLICT", "Project was updated elsewhere");
         response.json({ data: toPublicProject(project), requestId: response.locals.requestId });
-    });
+    }));
 
-    router.delete("/api/v1/projects/:projectId", authenticated, (request, response) => {
+    router.delete("/api/v1/projects/:projectId", authenticated, asyncHandler(async (request, response) => {
         const account = getAccount(response.locals.auth);
-        const deleted = options.projects.delete(account.id, String(request.params.projectId));
+        const deleted = await options.projects.delete(account.id, String(request.params.projectId));
         if (!deleted) throw new HttpError(404, "PROJECT_NOT_FOUND", "Project was not found");
         response.status(204).end();
-    });
+    }));
     return router;
 }
 export function createDefaultProjectOptions(sessionService: ProjectRouteOptions["sessionService"]): ProjectRouteOptions {
     return { projects: new InMemoryProjectRepository(), sessionService };
 }
 
-function toPublicProject(project: ReturnType<ProjectRepository["get"]> & object) {
+function toPublicProject(project: ProjectRecord) {
     return {
         id: project.id,
         name: project.name,
@@ -66,6 +66,10 @@ function toPublicProject(project: ReturnType<ProjectRepository["get"]> & object)
         createdAt: project.createdAt.toISOString(),
         updatedAt: project.updatedAt.toISOString(),
     };
+}
+
+function asyncHandler(handler: (request: Request, response: Response) => Promise<void>): RequestHandler {
+    return (request, response, next) => { void handler(request, response).catch(next); };
 }
 
 function getAccount(value: unknown): AuthenticatedContext["account"] {

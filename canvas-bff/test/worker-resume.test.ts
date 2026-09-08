@@ -34,7 +34,7 @@ function fixture() {
 
 test("worker resumes a leased provider task after a worker restart and persists the asset", async () => {
     const fixtureData = fixture();
-    const generation = fixtureData.service.create(fixtureData.accountId, {
+    const generation = await fixtureData.service.create(fixtureData.accountId, {
         projectId: fixtureData.project.id,
         providerId: fixtureData.provider.id,
         kind: "video",
@@ -65,14 +65,14 @@ test("worker resumes a leased provider task after a worker restart and persists 
 
 test("worker does not invoke a provider when a queued generation is cancelled", async () => {
     const fixtureData = fixture();
-    const generation = fixtureData.service.create(fixtureData.accountId, {
+    const generation = await fixtureData.service.create(fixtureData.accountId, {
         projectId: fixtureData.project.id,
         providerId: fixtureData.provider.id,
         kind: "image",
         input: { prompt: "cancel me" },
         clientRequestId: "request-cancel-1",
     });
-    assert.equal(fixtureData.service.cancel(fixtureData.accountId, generation.id), true);
+    assert.equal(await fixtureData.service.cancel(fixtureData.accountId, generation.id), true);
     let calls = 0;
     const provider: GenerationProvider = {
         async start() {
@@ -91,7 +91,7 @@ test("worker does not invoke a provider when a queued generation is cancelled", 
 
 test("worker retries a retryable provider failure without creating another generation", async () => {
     const fixtureData = fixture();
-    fixtureData.service.create(fixtureData.accountId, {
+    await fixtureData.service.create(fixtureData.accountId, {
         projectId: fixtureData.project.id,
         providerId: fixtureData.provider.id,
         kind: "audio",
@@ -111,5 +111,5 @@ test("worker retries a retryable provider failure without creating another gener
     const worker = new GenerationWorker({ generationRepository: fixtureData.generations, assetRepository: fixtureData.assets, objectStorage: fixtureData.storage, provider, workerId: "worker-1", now: fixtureData.clock });
     assert.equal((await worker.runOnce())?.status, "queued");
     assert.equal((await worker.runOnce())?.status, "succeeded");
-    assert.equal(fixtureData.service.list(fixtureData.accountId).length, 1);
+    assert.equal((await fixtureData.service.list(fixtureData.accountId)).length, 1);
 });

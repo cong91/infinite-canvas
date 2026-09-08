@@ -12,7 +12,7 @@ PORT=17372
 
 Run `npm install`, then `npm test`, `npm run build` or `npm start` from this directory. The service never accepts a wildcard origin and does not log request credentials.
 
-The current repositories and object storage are in-memory adapters intended for contract tests and local wiring. PostgreSQL, S3-compatible storage and concrete provider HTTP adapters still need deployment-specific selection and implementation before production use.
+In non-test environments the BFF uses PostgreSQL repositories for accounts, sessions, projects, providers, assets and generations, plus S3-compatible object storage for generated media. In-memory adapters remain available only through explicit test dependencies. Provider HTTP adapters and browser-side remote asset hydration are separate follow-up work.
 
 ## Docker infrastructure smoke
 
@@ -23,4 +23,17 @@ docker compose -f docker-compose.bff.local.yml -p infinite-canvas-bff up -d --bu
 powershell -ExecutionPolicy Bypass -File scripts/smoke-bff-stack.ps1
 ```
 
-The stack starts PostgreSQL 16, applies the checked-in migrations, creates the `canvas-media` bucket in MinIO, and starts the BFF on port `17372`. It intentionally tests infrastructure and migration wiring only; the running BFF still uses in-memory repositories until the PostgreSQL/S3 adapter slice is implemented. Stop it with `docker compose -f docker-compose.bff.local.yml -p infinite-canvas-bff down`. Named volumes are preserved unless `-v` is explicitly added.
+The stack starts PostgreSQL 16, applies the checked-in migrations, creates the `canvas-media` bucket in MinIO, and starts the persistent BFF on port `17372`. Run the adapter integration test after the stack is up to verify data and signed media URLs survive new repository instances:
+
+```powershell
+$env:RUN_PERSISTENCE_INTEGRATION = "1"
+$env:DATABASE_URL = "postgresql://canvas:canvas-dev-password@127.0.0.1:15432/canvas"
+$env:S3_ENDPOINT = "http://127.0.0.1:19000"
+$env:S3_PUBLIC_ENDPOINT = "http://127.0.0.1:19000"
+$env:S3_BUCKET = "canvas-media"
+$env:S3_ACCESS_KEY_ID = "canvas"
+$env:S3_SECRET_ACCESS_KEY = "canvas-dev-secret"
+npm run test:integration
+```
+
+Stop it with `docker compose -f docker-compose.bff.local.yml -p infinite-canvas-bff down`. Named volumes are preserved unless `-v` is explicitly added.

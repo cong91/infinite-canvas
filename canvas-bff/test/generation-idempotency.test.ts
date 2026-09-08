@@ -26,26 +26,26 @@ function createFixture() {
     return { service, accountId, project, provider };
 }
 
-test("generation creation is idempotent per account and client request id", () => {
+test("generation creation is idempotent per account and client request id", async () => {
     const { service, accountId, project, provider } = createFixture();
     const input = { projectId: project.id, providerId: provider.id, kind: "image" as const, input: { prompt: "a tree" }, clientRequestId: "request-1" };
-    const first = service.create(accountId, input);
-    const duplicate = service.create(accountId, input);
+    const first = await service.create(accountId, input);
+    const duplicate = await service.create(accountId, input);
 
     assert.equal(duplicate.id, first.id);
-    assert.equal(service.list(accountId).length, 1);
+    assert.equal((await service.list(accountId)).length, 1);
 });
 
-test("generation rejects a changed payload for an existing idempotency key and foreign records", () => {
+test("generation rejects a changed payload for an existing idempotency key and foreign records", async () => {
     const { service, accountId, project, provider } = createFixture();
-    service.create(accountId, { projectId: project.id, providerId: provider.id, kind: "image", input: { prompt: "a tree" }, clientRequestId: "request-1" });
-    assert.throws(
+    await service.create(accountId, { projectId: project.id, providerId: provider.id, kind: "image", input: { prompt: "a tree" }, clientRequestId: "request-1" });
+    await assert.rejects(
         () => service.create(accountId, { projectId: project.id, providerId: provider.id, kind: "image", input: { prompt: "a house" }, clientRequestId: "request-1" }),
         GenerationConflictError,
     );
-    assert.throws(
+    await assert.rejects(
         () => service.create("account-b", { projectId: project.id, providerId: provider.id, kind: "image", input: {}, clientRequestId: "request-2" }),
         /Project was not found/,
     );
-    assert.equal(service.get("account-b", service.list(accountId)[0].id), undefined);
+    assert.equal(await service.get("account-b", (await service.list(accountId))[0].id), undefined);
 });

@@ -34,22 +34,22 @@ export class GenerationWorker {
 
     async runOnce(): Promise<GenerationRecord | undefined> {
         const now = new Date(this.now());
-        const generation = this.generations.claimNext(this.workerId, now, this.leaseMs);
+        const generation = await this.generations.claimNext(this.workerId, now, this.leaseMs);
         if (!generation) return undefined;
         if (generation.status === "cancelled") return undefined;
         const result = generation.providerTaskId ? await this.provider.poll(generation) : await this.provider.start(generation);
         if (result.status === "pending") {
-            this.generations.setProviderTask(generation.id, result.providerTaskId, this.workerId, new Date(this.now() + this.leaseMs));
-            if (result.progress !== undefined) this.generations.updateProgress(generation.id, this.workerId, result.progress);
+            await this.generations.setProviderTask(generation.id, result.providerTaskId, this.workerId, new Date(this.now() + this.leaseMs));
+            if (result.progress !== undefined) await this.generations.updateProgress(generation.id, this.workerId, result.progress);
             return this.generations.get(generation.accountId, generation.id);
         }
         if (result.status === "failed") {
-            if (result.retryable) this.generations.releaseForRetry(generation.id, this.workerId, result.errorCode);
-            else this.generations.fail(generation.id, this.workerId, result.errorCode);
+            if (result.retryable) await this.generations.releaseForRetry(generation.id, this.workerId, result.errorCode);
+            else await this.generations.fail(generation.id, this.workerId, result.errorCode);
             return this.generations.get(generation.accountId, generation.id);
         }
         const stored = await this.storage.put({ accountId: generation.accountId, data: result.data, contentType: result.contentType });
-        const asset = this.assets.create({
+        const asset = await this.assets.create({
             accountId: generation.accountId,
             projectId: generation.projectId,
             kind: generation.kind === "text" ? "file" : generation.kind,
@@ -57,7 +57,7 @@ export class GenerationWorker {
             ...(result.providerUrl ? { providerUrl: result.providerUrl } : {}),
             metadata: { generationId: generation.id, contentType: stored.contentType, size: stored.size, checksum: stored.checksum },
         });
-        this.generations.complete(generation.id, this.workerId, asset.id);
+        await this.generations.complete(generation.id, this.workerId, asset.id);
         return this.generations.get(generation.accountId, generation.id);
     }
 }

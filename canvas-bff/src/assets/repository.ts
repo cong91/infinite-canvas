@@ -12,10 +12,10 @@ export type AssetRecord = {
 };
 
 export interface AssetRepository {
-    list(accountId: string, projectId?: string): AssetRecord[];
-    get(accountId: string, id: string): AssetRecord | undefined;
-    create(input: Omit<AssetRecord, "id" | "createdAt">): AssetRecord;
-    delete(accountId: string, id: string): boolean;
+    list(accountId: string, projectId?: string): AssetRecord[] | Promise<AssetRecord[]>;
+    get(accountId: string, id: string): AssetRecord | undefined | Promise<AssetRecord | undefined>;
+    create(input: Omit<AssetRecord, "id" | "createdAt">): AssetRecord | Promise<AssetRecord>;
+    delete(accountId: string, id: string): boolean | Promise<boolean>;
 }
 
 export class InMemoryAssetRepository implements AssetRepository {
