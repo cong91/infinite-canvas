@@ -28,11 +28,25 @@ export class Sub2ApiClient {
     private readonly baseUrl: string;
     private readonly fetchImpl: typeof fetch;
     private readonly timeoutMs: number;
+    private readonly canvasBffSecret?: string;
 
-    constructor(baseUrl: string, fetchImpl: typeof fetch = fetch, timeoutMs = 5_000) {
+    constructor(baseUrl: string, fetchImpl: typeof fetch = fetch, timeoutMs = 5_000, canvasBffSecret?: string) {
         this.baseUrl = baseUrl.replace(/\/$/, "");
         this.fetchImpl = fetchImpl;
         this.timeoutMs = timeoutMs;
+        this.canvasBffSecret = canvasBffSecret?.trim();
+    }
+
+    async exchangeLaunchCode(launchCode: string, canvasOrigin: string): Promise<string> {
+        if (!launchCode.trim()) throw new HttpError(400, "LAUNCH_CODE_REQUIRED", "A launch code is required");
+        if (!this.canvasBffSecret) throw new HttpError(503, "SUB2API_SSO_UNAVAILABLE", "Canvas SSO is not configured");
+
+        const response = await this.exchangeRequest(launchCode.trim(), canvasOrigin);
+        if (!response.ok) throw this.toError(response);
+        const body = await this.readEnvelope(response);
+        const token = asOptionalString(asRecord(body.data).access_token);
+        if (!token) throw new Sub2ApiClientError(502, "SUB2API_INVALID_RESPONSE", "Sub2API launch exchange is missing an access token");
+        return token;
     }
 
     async verifyAccessToken(accessToken: string): Promise<Sub2ApiIdentity> {
@@ -56,6 +70,30 @@ export class Sub2ApiClient {
                     Accept: "application/json",
                     Authorization: `Bearer ${accessToken}`,
                 },
+                signal: controller.signal,
+            });
+        } catch (error) {
+            if (error instanceof Error && error.name === "AbortError") {
+                throw new Sub2ApiClientError(503, "SUB2API_UNAVAILABLE", "Sub2API did not respond in time");
+            }
+            throw new Sub2ApiClientError(503, "SUB2API_UNAVAILABLE", "Sub2API could not be reached");
+        } finally {
+            clearTimeout(timeout);
+        }
+    }
+
+    private async exchangeRequest(launchCode: string, canvasOrigin: string): Promise<Response> {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+        try {
+            return await this.fetchImpl(`${this.baseUrl}/api/v1/canvas/launch/exchange`, {
+                method: "POST",
+                headers: {
+                    Accept: "application/json",
+                    "Content-Type": "application/json",
+                    "X-Canvas-BFF-Secret": this.canvasBffSecret || "",
+                },
+                body: JSON.stringify({ launch_code: launchCode, canvas_origin: canvasOrigin }),
                 signal: controller.signal,
             });
         } catch (error) {

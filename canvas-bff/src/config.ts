@@ -20,7 +20,15 @@ export const canvasBffConfigSchema = z.object({
     port: z.coerce.number().int().min(1).max(65535).default(DEFAULT_PORT),
     canvasOrigin: urlOrigin,
     sub2ApiBaseUrl: urlOrigin,
+    sub2ApiCanvasBffSecret: z.string().trim().min(32).optional(),
     environment: z.enum(["development", "test", "production"]).default("development"),
+}).superRefine((value, context) => {
+    if (value.environment === "production" && !value.sub2ApiCanvasBffSecret) {
+        context.addIssue({ code: z.ZodIssueCode.custom, message: "SUB2API_CANVAS_BFF_SECRET is required in production" });
+    }
+    if (value.environment === "production" && new URL(value.canvasOrigin).protocol !== "https:") {
+        context.addIssue({ code: z.ZodIssueCode.custom, message: "CANVAS_ORIGIN must use HTTPS in production" });
+    }
 });
 
 export type CanvasBffConfig = z.output<typeof canvasBffConfigSchema>;
@@ -30,6 +38,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): CanvasBffConfi
         port: env.PORT,
         canvasOrigin: env.CANVAS_ORIGIN,
         sub2ApiBaseUrl: env.SUB2API_BASE_URL,
+        sub2ApiCanvasBffSecret: env.SUB2API_CANVAS_BFF_SECRET,
         environment: env.NODE_ENV,
     });
 }

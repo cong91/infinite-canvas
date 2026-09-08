@@ -80,6 +80,7 @@ services:
       PORT: 17372
       CANVAS_ORIGIN: ${CANVAS_ORIGIN:-http://localhost:3000}
       SUB2API_BASE_URL: ${SUB2API_BASE_URL:-http://host.docker.internal:8000}
+      SUB2API_CANVAS_BFF_SECRET: ${SUB2API_CANVAS_BFF_SECRET:-local-canvas-bff-shared-secret-change-me}
       CANVAS_PROVIDER_MASTER_KEY: ${CANVAS_PROVIDER_MASTER_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
       CANVAS_OBJECT_SIGNING_SECRET: ${CANVAS_OBJECT_SIGNING_SECRET:-local-only-object-signing-secret-change-me}
       DATABASE_URL: postgresql://${POSTGRES_USER:-canvas}:${POSTGRES_PASSWORD:-canvas-dev-password}@postgres:5432/${POSTGRES_DB:-canvas}

@@ -4,12 +4,14 @@ import { z } from "zod";
 import { HttpError } from "../http/errors.js";
 import { requireSessionMiddleware, type AuthenticatedContext } from "../auth/routes.js";
 import { type ProjectRepository } from "../projects/repository.js";
+import type { ObjectStorage } from "../storage/object-storage.js";
 import { InMemoryAssetRepository, type AssetRecord, type AssetRepository } from "./repository.js";
 
 export type AssetRouteOptions = {
     assets: AssetRepository;
     projects: ProjectRepository;
     sessionService: Parameters<typeof requireSessionMiddleware>[0];
+    objectStorage?: ObjectStorage;
 };
 
 const assetBody = z.object({
@@ -27,14 +29,14 @@ export function createAssetRouter(options: AssetRouteOptions): Router {
     router.get("/api/v1/projects/:projectId/assets", authenticated, asyncHandler(async (request, response) => {
         const account = getAccount(response.locals.auth);
         await assertProject(options.projects, account.id, String(request.params.projectId));
-        response.json({ data: (await options.assets.list(account.id, String(request.params.projectId))).map(toPublicAsset), requestId: response.locals.requestId });
+        response.json({ data: await Promise.all((await options.assets.list(account.id, String(request.params.projectId))).map((asset) => toPublicAsset(asset, account.id, options.objectStorage))), requestId: response.locals.requestId });
     }));
 
     router.get("/api/v1/assets", authenticated, asyncHandler(async (request, response) => {
         const account = getAccount(response.locals.auth);
         const projectId = typeof request.query.projectId === "string" ? request.query.projectId : undefined;
         if (projectId) await assertProject(options.projects, account.id, projectId);
-        response.json({ data: (await options.assets.list(account.id, projectId)).map(toPublicAsset), requestId: response.locals.requestId });
+        response.json({ data: await Promise.all((await options.assets.list(account.id, projectId)).map((asset) => toPublicAsset(asset, account.id, options.objectStorage))), requestId: response.locals.requestId });
     }));
 
     router.post("/api/v1/assets/import", authenticated, asyncHandler(async (request, response) => {
@@ -42,14 +44,14 @@ export function createAssetRouter(options: AssetRouteOptions): Router {
         const body = parseBody(assetBody, request.body);
         if (body.projectId) await assertProject(options.projects, account.id, body.projectId);
         const asset = await options.assets.create({ ...body, accountId: account.id });
-        response.status(201).json({ data: toPublicAsset(asset), requestId: response.locals.requestId });
+        response.status(201).json({ data: await toPublicAsset(asset, account.id, options.objectStorage), requestId: response.locals.requestId });
     }));
 
     router.get("/api/v1/assets/:assetId", authenticated, asyncHandler(async (request, response) => {
         const account = getAccount(response.locals.auth);
         const asset = await options.assets.get(account.id, String(request.params.assetId));
         if (!asset) throw new HttpError(404, "ASSET_NOT_FOUND", "Asset was not found");
-        response.json({ data: toPublicAsset(asset), requestId: response.locals.requestId });
+        response.json({ data: await toPublicAsset(asset, account.id, options.objectStorage), requestId: response.locals.requestId });
     }));
 
     router.delete("/api/v1/assets/:assetId", authenticated, asyncHandler(async (request, response) => {
@@ -81,8 +83,9 @@ function parseBody<T extends z.ZodTypeAny>(schema: T, value: unknown): z.output<
     return result.data;
 }
 
-function toPublicAsset(asset: AssetRecord) {
-    return { ...asset, createdAt: asset.createdAt.toISOString() };
+async function toPublicAsset(asset: AssetRecord, accountId: string, objectStorage?: ObjectStorage) {
+    const signedUrl = asset.objectKey && objectStorage ? await objectStorage.createSignedReadUrl(accountId, asset.objectKey, 300) : "";
+    return { ...asset, ...(signedUrl ? { signedUrl } : {}), createdAt: asset.createdAt.toISOString() };
 }
 
 function asyncHandler(handler: (request: Request, response: Response) => Promise<void>): RequestHandler {

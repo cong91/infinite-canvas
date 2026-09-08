@@ -2,7 +2,13 @@
 
 ## Unreleased
 
+- [调整] 隐藏前端指向项目上游的 GitHub 入口与发布版本信息，保留其他 GitHub 集成和模块信息。
+- [调整] Sub2API 到 Canvas 的 iframe 登录改为一次性 launch code 服务器交换，浏览器和 custom iframe 不再接收 dashboard JWT。
 - [新增] Canvas BFF 非测试环境改用 PostgreSQL 保存账户/项目/Provider/素材/生成记录，并使用 MinIO 保存媒体对象。
+- [新增] 增加 `ovh-sing` 的生产 Docker Compose、Nginx 同源代理和 SSH CI/CD 部署流程，并在前置条件不满足时阻止切换流量。
+
++ [新增] Canvas BFF 持久化运行时启动可恢复的生成 worker，并通过服务端 Sub2API provider adapter 完成图像、视频、音频和文本生成及媒体入库。
++ [新增] 已登录 Canvas 的生成请求自动走账号级 BFF，provider 选择和远端项目/素材在刷新后从 BFF 恢复，生成媒体通过 MinIO 签名地址回填画布资产。
 
 + [新增] 增加独立的 Canvas BFF Docker stack，包含 PostgreSQL 迁移、MinIO bucket 初始化和持久化 readiness smoke test。
 + [新增] Canvas BFF 增加 Sub2API SSO 会话、账号级 provider/project/asset/generation API、加密 provider key 与可恢复的 generation worker 边界；JWT 仅在 BFF 进程内用于 catalog/key 解析，不写入浏览器或数据库。

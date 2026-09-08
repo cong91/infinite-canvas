@@ -34,8 +34,8 @@ test("generation routes create idempotent records and enforce session ownership"
     const address = server.address();
     assert(address && typeof address !== "string");
     const url = `http://127.0.0.1:${address.port}`;
-    const login = await fetch(`${url}/api/v1/sso/verify`, { method: "POST", headers: { Origin: config.canvasOrigin, Authorization: "Bearer jwt-a" }, body: "{}" });
-    const cookie = (login.headers.get("set-cookie") || "").split(";", 1)[0];
+    const session = await sessions.createSession(account);
+    const cookie = `canvas_session=${session.token}`;
     try {
         const init = { method: "POST", headers: { Origin: config.canvasOrigin, Cookie: cookie, "Content-Type": "application/json" }, body: JSON.stringify({ projectId: project.id, providerId: provider.id, kind: "image", input: { prompt: "tree" }, clientRequestId: "request-1" }) };
         const first = await fetch(`${url}/api/v1/generations`, init);

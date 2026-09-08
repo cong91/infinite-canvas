@@ -1,4 +1,5 @@
 import { Router, type Request, type RequestHandler, type Response } from "express";
+import { z } from "zod";
 
 import { HttpError } from "../http/errors.js";
 import { SESSION_COOKIE_NAME, type CanvasAccount, SessionService } from "./session-service.js";
@@ -13,20 +14,22 @@ export type AuthRouteOptions = {
     canvasOrigin: string;
     sub2ApiClient: Sub2ApiClient;
     sessionService: SessionService;
+    secureCookies?: boolean;
 };
 
 export function createAuthRouter(options: AuthRouteOptions): Router {
     const router = Router();
 
-    router.post("/api/v1/sso/verify", requireCanvasOrigin(options.canvasOrigin), asyncHandler(async (request, response) => {
-        const accessToken = readBearerToken(request);
+    router.post("/api/v1/sso/launch/exchange", requireCanvasOrigin(options.canvasOrigin), asyncHandler(async (request, response) => {
+        const launchCode = parseLaunchCode(request.body);
+        const accessToken = await exchangeSub2ApiLaunchCode(options.sub2ApiClient, launchCode, options.canvasOrigin);
         const identity = await verifySub2ApiToken(options.sub2ApiClient, accessToken);
         if (identity.status.toLowerCase() !== "active") {
             throw new HttpError(403, "SUB2API_ACCOUNT_INACTIVE", "Sub2API account is not active");
         }
         const account = await options.sessionService.upsertAccount(identity);
         const created = await options.sessionService.createSession(account, accessToken);
-        setSessionCookie(response, created.token, created.session.expiresAt);
+        setSessionCookie(response, created.token, created.session.expiresAt, options.secureCookies ?? true);
         response.status(200).json({
             data: {
                 account: publicAccount(account),
@@ -50,7 +53,7 @@ export function createAuthRouter(options: AuthRouteOptions): Router {
     router.post("/api/v1/logout", requireCanvasOrigin(options.canvasOrigin), asyncHandler(async (request, response) => {
         const token = readCookie(request, SESSION_COOKIE_NAME);
         if (token) await options.sessionService.revokeSession(token);
-        clearSessionCookie(response);
+        clearSessionCookie(response, options.secureCookies ?? true);
         response.status(200).json({ data: { ok: true }, requestId: response.locals.requestId });
     }));
 
@@ -71,11 +74,12 @@ async function requireSession(sessionService: SessionService, request: Request):
     return { account: session.account, sessionExpiresAt: session.expiresAt };
 }
 
-function readBearerToken(request: Request): string {
-    const header = request.header("authorization") || "";
-    const match = /^Bearer\s+(.+)$/i.exec(header);
-    if (!match?.[1]?.trim()) throw new HttpError(401, "AUTHORIZATION_REQUIRED", "Authorization is required");
-    return match[1].trim();
+const launchCodeBody = z.object({ launch_code: z.string().trim().min(32).max(256) });
+
+function parseLaunchCode(value: unknown): string {
+    const parsed = launchCodeBody.safeParse(value);
+    if (!parsed.success) throw new HttpError(400, "INVALID_LAUNCH_CODE", "A valid launch code is required");
+    return parsed.data.launch_code;
 }
 
 function readCookie(request: Request, name: string): string | null {
@@ -98,13 +102,13 @@ export function readCanvasSessionToken(request: Request): string | null {
     return readCookie(request, SESSION_COOKIE_NAME);
 }
 
-function setSessionCookie(response: Response, token: string, expiresAt: Date): void {
+function setSessionCookie(response: Response, token: string, expiresAt: Date, secure: boolean): void {
     const maxAge = Math.max(0, Math.floor((expiresAt.getTime() - Date.now()) / 1_000));
-    response.setHeader("Set-Cookie", `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; Max-Age=${maxAge}; Path=/; HttpOnly; Secure; SameSite=None`);
+    response.setHeader("Set-Cookie", `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; Max-Age=${maxAge}; Path=/; HttpOnly; SameSite=${secure ? "None" : "Lax"}${secure ? "; Secure" : ""}`);
 }
 
-function clearSessionCookie(response: Response): void {
-    response.setHeader("Set-Cookie", `${SESSION_COOKIE_NAME}=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/; HttpOnly; Secure; SameSite=None`);
+function clearSessionCookie(response: Response, secure: boolean): void {
+    response.setHeader("Set-Cookie", `${SESSION_COOKIE_NAME}=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/; HttpOnly; SameSite=${secure ? "None" : "Lax"}${secure ? "; Secure" : ""}`);
 }
 
 function requireCanvasOrigin(canvasOrigin: string): RequestHandler {
@@ -120,6 +124,16 @@ function requireCanvasOrigin(canvasOrigin: string): RequestHandler {
 async function verifySub2ApiToken(client: Sub2ApiClient, token: string) {
     try {
         return await client.verifyAccessToken(token);
+    } catch (error) {
+        if (error instanceof HttpError) throw error;
+        if (error instanceof Sub2ApiClientError) throw new HttpError(error.statusCode, error.code, error.message);
+        throw error;
+    }
+}
+
+async function exchangeSub2ApiLaunchCode(client: Sub2ApiClient, launchCode: string, canvasOrigin: string) {
+    try {
+        return await client.exchangeLaunchCode(launchCode, canvasOrigin);
     } catch (error) {
         if (error instanceof HttpError) throw error;
         if (error instanceof Sub2ApiClientError) throw new HttpError(error.statusCode, error.code, error.message);

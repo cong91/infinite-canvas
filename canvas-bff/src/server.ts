@@ -26,6 +26,8 @@ import { GenerationService } from "./generations/service.js";
 import { InMemoryObjectStorage } from "./storage/object-storage.js";
 import { S3ObjectStorage } from "./storage/s3-object-storage.js";
 import { PostgresAssetRepository } from "./assets/postgres-repository.js";
+import { HttpGenerationProvider } from "./providers/http-generation-provider.js";
+import { GenerationWorker, GenerationWorkerLoop } from "./worker/generation-worker.js";
 
 export function isAllowedOrigin(requestOrigin: string | undefined, canvasOrigin: string): boolean {
     if (!requestOrigin) return true;
@@ -79,8 +81,9 @@ export function createApp(config: CanvasBffConfig, dependencies: AppDependencies
     const persistent = config.environment === "test" ? undefined : createPersistentDependencies(config);
     const auth = dependencies.auth ?? persistent?.auth ?? {
         canvasOrigin: config.canvasOrigin,
-        sub2ApiClient: new Sub2ApiClient(config.sub2ApiBaseUrl),
+        sub2ApiClient: new Sub2ApiClient(config.sub2ApiBaseUrl, fetch, 5_000, config.sub2ApiCanvasBffSecret),
         sessionService: new SessionService(new InMemorySessionRepository()),
+        secureCookies: config.environment === "production",
     };
     app.use(createAuthRouter(auth));
     const projectOptions = {
@@ -95,11 +98,21 @@ export function createApp(config: CanvasBffConfig, dependencies: AppDependencies
         ...(dependencies.workspace?.assets ?? persistent?.assets ?? createDefaultAssetOptions(auth.sessionService, projectOptions.projects)),
         sessionService: auth.sessionService,
         projects: projectOptions.projects,
+        ...(persistent?.objectStorage ? { objectStorage: persistent.objectStorage } : {}),
     } as AssetRouteOptions;
     const generationOptions = {
         ...(dependencies.workspace?.generations ?? persistent?.generations ?? createDefaultGenerationOptions(projectOptions.projects, providerOptions.providers, assetOptions.assets)),
         sessionService: auth.sessionService,
     } as GenerationRouteOptions;
+    if (persistent) {
+        app.locals.canvasWorker = new GenerationWorkerLoop(new GenerationWorker({
+            generationRepository: persistent.generations.generations,
+            assetRepository: persistent.assets.assets,
+            objectStorage: persistent.objectStorage,
+            provider: new HttpGenerationProvider({ baseUrl: config.sub2ApiBaseUrl, providers: persistent.providers.providers, secretBox: persistent.providers.secretBox }),
+            workerId: process.env.CANVAS_WORKER_ID || `canvas-bff-${process.pid}`,
+        }), { intervalMs: Number(process.env.CANVAS_WORKER_INTERVAL_MS || 1_000) });
+    }
     app.use(createProviderRouter(providerOptions));
     app.use(createProjectRouter(projectOptions));
     app.use(createAssetRouter(assetOptions));
@@ -151,11 +164,11 @@ function createPersistentDependencies(config: CanvasBffConfig) {
     });
     return {
         pool,
-        auth: { canvasOrigin: config.canvasOrigin, sub2ApiClient: new Sub2ApiClient(config.sub2ApiBaseUrl), sessionService },
+        auth: { canvasOrigin: config.canvasOrigin, sub2ApiClient: new Sub2ApiClient(config.sub2ApiBaseUrl, fetch, 5_000, config.sub2ApiCanvasBffSecret), sessionService, secureCookies: config.environment === "production" },
         projects: { projects },
         providers: { catalog: new Sub2ApiCatalogAdapter(config.sub2ApiBaseUrl), secretBox: ProviderSecretBox.fromEnvironment({ ...environment, CANVAS_PROVIDER_MASTER_KEY: requiredEnvironment(environment, "CANVAS_PROVIDER_MASTER_KEY") }), providers },
         assets: { assets, projects },
-        generations: { service: new GenerationService({ generations, projects, providers }), assets, objectStorage },
+        generations: { service: new GenerationService({ generations, projects, providers }), generations, assets, objectStorage },
         objectStorage,
     };
 }
@@ -168,9 +181,19 @@ function requiredEnvironment(environment: NodeJS.ProcessEnv, name: string): stri
 
 export function startServer(config: CanvasBffConfig = loadConfig()) {
     const app = createApp(config);
-    return app.listen(config.port, "0.0.0.0", () => {
+    const server = app.listen(config.port, "0.0.0.0", () => {
         if (config.environment !== "test") console.info(`Canvas BFF listening on ${config.port}`);
     });
+    if (config.environment === "test") return server;
+    const runtime = app.locals.canvasWorker as GenerationWorkerLoop | undefined;
+    runtime?.start();
+    const shutdown = () => {
+        runtime?.stop();
+        server.close();
+    };
+    process.once("SIGINT", shutdown);
+    process.once("SIGTERM", shutdown);
+    return server;
 }
 
 const invokedFile = process.argv[1] ? pathToFileURL(process.argv[1]).href : "";

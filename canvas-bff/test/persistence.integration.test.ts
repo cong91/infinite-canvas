@@ -10,6 +10,8 @@ import { PostgresProviderRepository } from "../src/providers/postgres-repository
 import { PostgresAssetRepository } from "../src/assets/postgres-repository.js";
 import { PostgresGenerationRepository } from "../src/generations/postgres-repository.js";
 import { S3ObjectStorage } from "../src/storage/s3-object-storage.js";
+import { HttpGenerationProvider } from "../src/providers/http-generation-provider.js";
+import { GenerationWorker } from "../src/worker/generation-worker.js";
 
 test("PostgreSQL and MinIO retain account workspace data across adapter instances", { skip: process.env.RUN_PERSISTENCE_INTEGRATION !== "1" }, async () => {
     const environment = process.env;
@@ -36,7 +38,7 @@ test("PostgreSQL and MinIO retain account workspace data across adapter instance
         assert.equal((await accountRepo.getSession(sessionHash))?.account.id, account.id);
 
         const project = await projects.create({ accountId: account.id, name: "Persisted canvas", data: { nodes: [{ id: "node-1" }] } });
-        const provider = await providers.create({ accountId: account.id, name: "Persisted provider", providerType: "openai-compatible", secret: secretBox.encrypt("sk-persisted-secret"), secretDescription: secretBox.describe("sk-persisted-secret"), status: "active" });
+        const provider = await providers.create({ accountId: account.id, name: "Persisted provider", providerType: "openai-compatible", model: "gpt-image-1", secret: secretBox.encrypt("sk-persisted-secret"), secretDescription: secretBox.describe("sk-persisted-secret"), status: "active" });
         const generation = await generations.create({ accountId: account.id, projectId: project.id, providerId: provider.id, kind: "image", input: { prompt: "persisted" }, inputHash: "hash", clientRequestId: `request-${accountKey}`, status: "queued", progress: 0, attempt: 0 });
         const objectStorage = new S3ObjectStorage(storageOptions);
         const stored = await objectStorage.put({ accountId: account.id, data: Buffer.from("persisted-media"), contentType: "image/png" });
@@ -55,6 +57,24 @@ test("PostgreSQL and MinIO retain account workspace data across adapter instance
         const response = await fetch(signedUrl);
         assert.equal(response.status, 200);
         assert.equal(await response.text(), "persisted-media");
+        await generations.cancel(account.id, generation.id);
+
+        const workerGeneration = await generations.create({ accountId: account.id, projectId: project.id, providerId: provider.id, kind: "image", input: { prompt: "worker output", model: "gpt-image-1" }, inputHash: "worker-hash", clientRequestId: `worker-${accountKey}`, status: "queued", progress: 0, attempt: 0 });
+        const workerProvider = new HttpGenerationProvider({
+            baseUrl: "http://sub2api.test",
+            providers: freshProviders,
+            secretBox,
+            fetchImpl: async () => new Response(JSON.stringify({ data: [{ b64_json: Buffer.from("worker-media").toString("base64") }] }), { status: 200, headers: { "Content-Type": "application/json" } }),
+        });
+        const worker = new GenerationWorker({ generationRepository: freshGenerations, assetRepository: assets, objectStorage: freshStorage, provider: workerProvider, workerId: "integration-worker" });
+        const completed = await worker.runOnce();
+        assert.equal(completed?.id, workerGeneration.id);
+        assert.equal(completed?.status, "succeeded");
+        assert.ok(completed?.outputAssetId);
+        const workerAsset = await assets.get(account.id, completed!.outputAssetId!);
+        assert.ok(workerAsset?.objectKey);
+        const workerSignedUrl = await freshStorage.createSignedReadUrl(account.id, workerAsset!.objectKey!, 60);
+        assert.equal(await (await fetch(workerSignedUrl)).text(), "worker-media");
     } finally {
         await pool.query("DELETE FROM canvas_accounts WHERE sub2api_user_id = $1", [accountKey]);
         await pool.end();

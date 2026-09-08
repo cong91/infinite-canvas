@@ -22,41 +22,17 @@ export function ClientRootInit({ children }: { children: ReactNode }) {
     useEffect(() => {
         if (handledSsoParams.current) return;
         const searchParams = new URLSearchParams(window.location.search);
-        const accessToken = searchParams.get("accessToken") || searchParams.get("access_token") || searchParams.get("ssoToken") || searchParams.get("sub2apiAccessToken") || searchParams.get("token");
-        if (accessToken?.trim()) {
+        const launchCode = searchParams.get("launch_code");
+        if (launchCode?.trim()) {
             handledSsoParams.current = true;
-            searchParams.delete("accessToken");
-            searchParams.delete("access_token");
-            searchParams.delete("ssoToken");
-            searchParams.delete("sub2apiAccessToken");
-            searchParams.delete("token");
+            searchParams.delete("launch_code");
             window.history.replaceState(null, "", `${window.location.pathname}${searchParams.size ? `?${searchParams}` : ""}${window.location.hash}`);
-            void verifyCanvasSession(accessToken);
+            void verifyCanvasSession(launchCode);
             return;
         }
         handledSsoParams.current = true;
         void initializeCanvasSession();
     }, [initializeCanvasSession, verifyCanvasSession]);
-
-    useEffect(() => {
-        const configuredOrigin = (import.meta.env.VITE_SUB2API_ORIGIN || "").trim();
-        let allowedOrigin = "";
-        try {
-            allowedOrigin = configuredOrigin ? new URL(configuredOrigin).origin : "";
-        } catch {
-            return;
-        }
-        if (!allowedOrigin) return;
-        const handleMessage = (event: MessageEvent<unknown>) => {
-            const expectedSource = window.parent === window ? window : window.parent;
-            if (event.origin !== allowedOrigin || event.source !== expectedSource || !event.data || typeof event.data !== "object") return;
-            const data = event.data as { type?: unknown; accessToken?: unknown };
-            if (data.type !== "sub2api:sso" || typeof data.accessToken !== "string" || !data.accessToken.trim()) return;
-            void verifyCanvasSession(data.accessToken);
-        };
-        window.addEventListener("message", handleMessage);
-        return () => window.removeEventListener("message", handleMessage);
-    }, [verifyCanvasSession]);
 
     useEffect(() => {
         if (handledConfigParams.current) return;

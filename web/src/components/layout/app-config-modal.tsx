@@ -85,6 +85,8 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
     const canvasCatalog = useCanvasProviderStore((state) => state.catalog);
     const canvasProviderStatus = useCanvasProviderStore((state) => state.status);
     const canvasProviderError = useCanvasProviderStore((state) => state.error);
+    const selectedCanvasProviderId = useCanvasProviderStore((state) => state.selectedProviderId);
+    const selectCanvasProvider = useCanvasProviderStore((state) => state.select);
     const loadCanvasProviders = useCanvasProviderStore((state) => state.load);
     const loadCanvasCatalog = useCanvasProviderStore((state) => state.loadCatalog);
     const createCanvasProvider = useCanvasProviderStore((state) => state.create);
@@ -292,12 +294,17 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                                             {canvasProviders.length ? (
                                                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
                                                     {canvasProviders.map((provider) => (
-                                                        <div key={provider.id} className="rounded-md border border-stone-200 px-3 py-2 dark:border-stone-800">
+                                                        <button
+                                                            type="button"
+                                                            key={provider.id}
+                                                            onClick={() => selectCanvasProvider(provider.id)}
+                                                            className={`w-full rounded-md border px-3 py-2 text-left transition-colors ${selectedCanvasProviderId === provider.id ? "border-primary bg-primary/5" : "border-stone-200 dark:border-stone-800"}`}
+                                                        >
                                                             <div className="truncate text-sm font-medium">{provider.name}</div>
                                                             <div className="mt-1 text-xs text-stone-500">
                                                                 {provider.maskedKey} · {provider.providerType}
                                                             </div>
-                                                        </div>
+                                                        </button>
                                                     ))}
                                                 </div>
                                             ) : (

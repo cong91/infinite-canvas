@@ -1,18 +1,21 @@
 # Infinite Canvas BFF
 
-The Canvas BFF is the account-scoped HTTP boundary for Infinite Canvas. It verifies a Sub2API dashboard JWT through user-facing Sub2API APIs, issues an opaque Canvas session, owns account-scoped provider/project/asset/generation records and exposes signed media URLs. The Sub2API assertion is retained only in process memory for up to ten minutes so catalog/key selection can be resolved server-side; it is never written to the database, response JSON or logs. The Canvas session itself can remain valid longer, but a fresh SSO handoff is required after the upstream assertion expires.
+The Canvas BFF is the account-scoped HTTP boundary for Infinite Canvas. It exchanges a one-use Sub2API launch code through a server-to-server shared secret, verifies the returned dashboard assertion through user-facing Sub2API APIs, issues an opaque Canvas session, owns account-scoped provider/project/asset/generation records and exposes signed media URLs. The dashboard assertion is retained only in process memory for up to ten minutes so catalog/key selection can be resolved server-side; it is never written to the database, response JSON or logs. The Canvas session itself can remain valid longer, but a fresh SSO handoff is required after the upstream assertion expires.
 
 ## Local setup
 
 ```text
 CANVAS_ORIGIN=https://canvas.example.test
 SUB2API_BASE_URL=https://sub2api.example.test
+SUB2API_CANVAS_BFF_SECRET=replace-with-the-shared-secret
 PORT=17372
 ```
 
 Run `npm install`, then `npm test`, `npm run build` or `npm start` from this directory. The service never accepts a wildcard origin and does not log request credentials.
 
-In non-test environments the BFF uses PostgreSQL repositories for accounts, sessions, projects, providers, assets and generations, plus S3-compatible object storage for generated media. In-memory adapters remain available only through explicit test dependencies. Provider HTTP adapters and browser-side remote asset hydration are separate follow-up work.
+For a local browser SSO gate, run `npm run dev:browser-sso-fixture` in one terminal and start the Canvas dev server with `VITE_CANVAS_BFF_URL=http://localhost:17374`; the fixture exercises launch-code consumption, session-cookie bootstrap and replay rejection without using a real account token.
+
+In non-test environments the BFF uses PostgreSQL repositories for accounts, sessions, projects, providers, assets and generations, plus S3-compatible object storage for generated media. In-memory adapters remain available only through explicit test dependencies. The persistent runtime starts a recoverable generation worker and uses the Sub2API HTTP provider adapter; authenticated browser sessions hydrate account-scoped projects and media assets from the BFF.
 
 ## Docker infrastructure smoke
 

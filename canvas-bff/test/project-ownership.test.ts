@@ -27,9 +27,10 @@ test("project and asset routes derive ownership from the session account", async
     assert(address && typeof address !== "string");
     const url = `http://127.0.0.1:${address.port}`;
     const login = async (token: string) => {
-        const response = await fetch(`${url}/api/v1/sso/verify`, { method: "POST", headers: { Origin: config.canvasOrigin, Authorization: `Bearer ${token}` }, body: "{}" });
-        assert.equal(response.status, 200);
-        return (response.headers.get("set-cookie") || "").split(";", 1)[0];
+        const id = token.includes("user-a") ? "a" : "b";
+        const account = await sessions.upsertAccount({ sub2ApiUserId: id, displayName: `User ${id}`, status: "active" });
+        const session = await sessions.createSession(account);
+        return `canvas_session=${session.token}`;
     };
     try {
         const cookieA = await login("user-a");

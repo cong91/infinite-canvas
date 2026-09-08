@@ -69,6 +69,17 @@ export type CanvasGeneration = {
     updatedAt: string;
 };
 
+export type CanvasAsset = {
+    id: string;
+    accountId: string;
+    projectId?: string;
+    kind: "image" | "video" | "audio" | "file";
+    providerUrl?: string;
+    metadata: Record<string, unknown>;
+    signedUrl?: string;
+    createdAt: string;
+};
+
 type Envelope<T> = { data: T; requestId?: string };
 
 export class CanvasBffError extends Error {
@@ -90,7 +101,7 @@ const canvasBffUrl = configuredCanvasBffUrl.endsWith("/api") ? configuredCanvasB
 
 export const canvasBff = {
     getSession: () => request<CanvasSession>("/v1/session"),
-    verifySub2ApiToken: (accessToken: string) => request<CanvasSession>("/v1/sso/verify", { method: "POST", accessToken }),
+    exchangeSub2ApiLaunchCode: (launchCode: string) => request<CanvasSession>("/v1/sso/launch/exchange", { method: "POST", body: { launch_code: launchCode } }),
     logout: () => request<{ ok: true }>("/v1/logout", { method: "POST" }),
     listProviders: () => request<CanvasProvider[]>("/v1/providers"),
     getProviderCatalog: () => request<ProviderCatalog>("/v1/providers/catalog"),
@@ -103,16 +114,16 @@ export const canvasBff = {
     getProject: (projectId: string) => request<CanvasProject>(`/v1/projects/${encodeURIComponent(projectId)}`),
     updateProject: (projectId: string, input: { name?: string; data?: Record<string, unknown>; revision?: number }) => request<CanvasProject>(`/v1/projects/${encodeURIComponent(projectId)}`, { method: "PATCH", body: input }),
     deleteProject: (projectId: string) => request<void>(`/v1/projects/${encodeURIComponent(projectId)}`, { method: "DELETE" }),
+    listAssets: (projectId?: string) => request<CanvasAsset[]>(`/v1/assets${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ""}`),
     listGenerations: () => request<CanvasGeneration[]>("/v1/generations"),
     getGeneration: (generationId: string) => request<CanvasGeneration>(`/v1/generations/${encodeURIComponent(generationId)}`),
     createGeneration: (input: { projectId: string; providerId: string; kind: CanvasGeneration["kind"]; input?: Record<string, unknown>; clientRequestId: string }) => request<CanvasGeneration>("/v1/generations", { method: "POST", body: input }),
     cancelGeneration: (generationId: string) => request<CanvasGeneration>(`/v1/generations/${encodeURIComponent(generationId)}/cancel`, { method: "POST" }),
 };
 
-async function request<T>(path: string, options: { method?: string; body?: unknown; accessToken?: string | null } = {}): Promise<T> {
+async function request<T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {
     const headers = new Headers({ Accept: "application/json" });
     if (options.body !== undefined) headers.set("Content-Type", "application/json");
-    if (options.accessToken?.trim()) headers.set("Authorization", `Bearer ${options.accessToken.trim()}`);
     const response = await fetch(`${canvasBffUrl}${path}`, {
         method: options.method || "GET",
         headers,

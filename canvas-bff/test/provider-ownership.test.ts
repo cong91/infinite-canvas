@@ -33,12 +33,11 @@ test("provider CRUD is scoped to the Canvas session account and never returns ra
     const address = server.address();
     assert(address && typeof address !== "string");
     const url = `http://127.0.0.1:${address.port}`;
-    const headers = (token: string) => ({ Origin: config.canvasOrigin, Authorization: `Bearer ${token}`, "Content-Type": "application/json" });
     const login = async (token: string) => {
-        const response = await fetch(`${url}/api/v1/sso/verify`, { method: "POST", headers: headers(token), body: "{}" });
-        const cookie = (response.headers.get("set-cookie") || "").split(";", 1)[0];
-        assert.equal(response.status, 200);
-        return cookie;
+        const id = token.includes("user-a") ? "a" : "b";
+        const account = await sessions.upsertAccount({ sub2ApiUserId: id, displayName: `User ${id}`, status: "active" });
+        const session = await sessions.createSession(account);
+        return `canvas_session=${session.token}`;
     };
     try {
         const cookieA = await login("user-a");
@@ -79,8 +78,9 @@ test("catalog uses the server-side session bridge without requiring a browser be
     assert(address && typeof address !== "string");
     const url = `http://127.0.0.1:${address.port}`;
     try {
-        const login = await fetch(`${url}/api/v1/sso/verify`, { method: "POST", headers: { Origin: config.canvasOrigin, Authorization: "Bearer catalog-jwt", "Content-Type": "application/json" }, body: "{}" });
-        const cookie = (login.headers.get("set-cookie") || "").split(";", 1)[0];
+        const account = await sessions.upsertAccount({ sub2ApiUserId: "catalog-user", displayName: "Catalog User", status: "active" });
+        const session = await sessions.createSession(account, "catalog-jwt");
+        const cookie = `canvas_session=${session.token}`;
         const response = await fetch(`${url}/api/v1/providers/catalog`, { headers: { Origin: config.canvasOrigin, Cookie: cookie } });
         assert.equal(response.status, 200);
         const body = await response.json() as { data: { keys: Array<{ maskedKey?: string }> } };

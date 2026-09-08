@@ -1,0 +1,130 @@
+name: infinite-canvas
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: infinite-canvas:ovh
+    container_name: infinite-canvas
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${CANVAS_FRONTEND_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  postgres:
+    image: postgres:16.6-alpine
+    container_name: infinite-canvas-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-15432}:5432"
+    volumes:
+      - canvas-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  postgres-migrate:
+    image: postgres:16.6-alpine
+    container_name: infinite-canvas-postgres-migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGDATABASE: ${POSTGRES_DB}
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./canvas-bff/migrations:/migrations:ro
+      - ./canvas-bff/scripts/run-migrations.sh:/usr/local/bin/run-migrations.sh:ro
+    command: ["sh", "/usr/local/bin/run-migrations.sh"]
+    restart: "no"
+
+  minio:
+    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+    container_name: infinite-canvas-minio
+    command: server /data --console-address ":9001"
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "127.0.0.1:${MINIO_API_PORT:-19000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-19001}:9001"
+    volumes:
+      - canvas-minio-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  minio-init:
+    image: minio/mc@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+    container_name: infinite-canvas-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      S3_BUCKET: ${S3_BUCKET}
+    entrypoint: ["/bin/sh", "-ec"]
+    command: >-
+      'mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}";
+      mc mb --ignore-existing local/$${S3_BUCKET}'
+    restart: "no"
+
+  canvas-bff:
+    build:
+      context: .
+      dockerfile: canvas-bff/Dockerfile
+    image: infinite-canvas-bff:ovh
+    container_name: infinite-canvas-bff
+    restart: unless-stopped
+    depends_on:
+      postgres-migrate:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      PORT: 17372
+      CANVAS_ORIGIN: ${CANVAS_ORIGIN}
+      SUB2API_BASE_URL: ${SUB2API_BASE_URL}
+      SUB2API_CANVAS_BFF_SECRET: ${SUB2API_CANVAS_BFF_SECRET}
+      CANVAS_PROVIDER_MASTER_KEY: ${CANVAS_PROVIDER_MASTER_KEY}
+      CANVAS_OBJECT_SIGNING_SECRET: ${CANVAS_OBJECT_SIGNING_SECRET}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      S3_ENDPOINT: http://minio:9000
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_BUCKET: ${S3_BUCKET}
+      S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      CANVAS_WORKER_ID: ${CANVAS_WORKER_ID:-ovh-sing}
+      CANVAS_WORKER_INTERVAL_MS: ${CANVAS_WORKER_INTERVAL_MS:-1000}
+    ports:
+      - "127.0.0.1:${CANVAS_BFF_PORT:-17372}:17372"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:' + (process.env.PORT || '17372') + '/ready').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      start_period: 15s
+      retries: 12
+
+volumes:
+  canvas-postgres-data:
+  canvas-minio-data:

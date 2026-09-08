@@ -6,7 +6,7 @@ import { ProviderSecretBox } from "../src/crypto/secret-box.js";
 import { InMemoryGenerationRepository } from "../src/generations/repository.js";
 import { GenerationService } from "../src/generations/service.js";
 import { InMemoryObjectStorage } from "../src/storage/object-storage.js";
-import { GenerationWorker, type GenerationProvider } from "../src/worker/generation-worker.js";
+import { GenerationWorker, GenerationWorkerLoop, type GenerationProvider } from "../src/worker/generation-worker.js";
 import { InMemoryProjectRepository } from "../src/projects/repository.js";
 import { InMemoryProviderRepository } from "../src/providers/repository.js";
 
@@ -112,4 +112,26 @@ test("worker retries a retryable provider failure without creating another gener
     assert.equal((await worker.runOnce())?.status, "queued");
     assert.equal((await worker.runOnce())?.status, "succeeded");
     assert.equal((await fixtureData.service.list(fixtureData.accountId)).length, 1);
+});
+
+test("worker loop drains work and stops without leaving a timer", async () => {
+    const fixtureData = fixture();
+    await fixtureData.service.create(fixtureData.accountId, {
+        projectId: fixtureData.project.id,
+        providerId: fixtureData.provider.id,
+        kind: "image",
+        input: { prompt: "loop" },
+        clientRequestId: "request-loop-1",
+    });
+    let calls = 0;
+    const provider: GenerationProvider = {
+        async start() { calls += 1; return { status: "succeeded", data: Buffer.from("image"), contentType: "image/png" }; },
+        async poll() { throw new Error("poll is not expected"); },
+    };
+    const loop = new GenerationWorkerLoop(new GenerationWorker({ generationRepository: fixtureData.generations, assetRepository: fixtureData.assets, objectStorage: fixtureData.storage, provider, workerId: "loop-worker", now: fixtureData.clock }), { intervalMs: 60_000 });
+    await loop.tick();
+    loop.start();
+    loop.stop();
+    assert.equal(calls, 1);
+    assert.equal((await fixtureData.service.list(fixtureData.accountId))[0]?.status, "succeeded");
 });

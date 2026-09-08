@@ -61,3 +61,33 @@ export class GenerationWorker {
         return this.generations.get(generation.accountId, generation.id);
     }
 }
+
+export class GenerationWorkerLoop {
+    private timer: ReturnType<typeof setInterval> | undefined;
+    private running = false;
+
+    constructor(private readonly worker: GenerationWorker, private readonly options: { intervalMs?: number } = {}) {}
+
+    start(): void {
+        if (this.timer) return;
+        const intervalMs = this.options.intervalMs ?? 1_000;
+        this.timer = setInterval(() => void this.tick(), intervalMs);
+        this.timer.unref?.();
+        void this.tick();
+    }
+
+    async tick(): Promise<void> {
+        if (this.running) return;
+        this.running = true;
+        try {
+            await this.worker.runOnce();
+        } finally {
+            this.running = false;
+        }
+    }
+
+    stop(): void {
+        if (this.timer) clearInterval(this.timer);
+        this.timer = undefined;
+    }
+}

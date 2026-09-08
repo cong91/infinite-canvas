@@ -92,12 +92,7 @@ export function ModelScriptEditor({ open, capability, modelName, value, onSave, 
                                     <li>{t("config.scriptEditor.stepAiPaste")}</li>
                                 </ol>
                                 <p className="mt-2 text-[11px] leading-5 text-stone-400">{t("config.scriptEditor.stepAiIncludes")}</p>
-                                <Button
-                                    type="primary"
-                                    className="mt-3"
-                                    icon={<Copy className="size-3.5" />}
-                                    onClick={() => copyText(getPluginAuthoringPrompt(capability, modelName, draft), t("config.scriptEditor.briefCopied"))}
-                                >
+                                <Button type="primary" className="mt-3" icon={<Copy className="size-3.5" />} onClick={() => copyText(getPluginAuthoringPrompt(capability, modelName, draft), t("config.scriptEditor.briefCopied"))}>
                                     {t("config.scriptEditor.copyBrief")}
                                 </Button>
                             </StepBlock>

@@ -5,8 +5,5 @@ description: Planned follow-up work
 
 # TODO
 
-- Add production generation worker startup wiring for the PostgreSQL queue and provider adapters.
 - Replace the Claude Code CLI adapter with a Claude Agent SDK adapter and improve the tool queue, following the [Local Agent Integration Plan](/docs/progress/local-agent-integration-plan).
 - Add Skill installation from web search, Skill resource-file management, and controlled local-memory persistence.
-- Implement production provider HTTP adapters and connect canvas/image/video/audio generation to the account-backed BFF generation API; keep plugin-authored direct provider calls explicitly local-only.
-- Hydrate canvas assets from the account BFF before localforage/WebDAV cache/export, then connect remote generation output to durable asset records with two-account browser acceptance coverage.
