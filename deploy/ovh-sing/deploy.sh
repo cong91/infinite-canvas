@@ -5,6 +5,7 @@ APP_DIR="${APP_DIR:-/srv/infinite-canvas}"
 ENV_FILE="${ENV_FILE:-$APP_DIR/.env.production}"
 COMPOSE_FILE="${COMPOSE_FILE:-$APP_DIR/docker-compose.ovh.yml}"
 DOMAIN="${CANVAS_DOMAIN:-canvas.v-claw.org}"
+MEDIA_DOMAIN="${CANVAS_MEDIA_DOMAIN:-media.canvas.v-claw.org}"
 NGINX_SOURCE="${NGINX_SOURCE:-$APP_DIR/deploy/ovh-sing/nginx.canvas.v-claw.org.conf}"
 NGINX_BOOTSTRAP_SOURCE="${NGINX_BOOTSTRAP_SOURCE:-$APP_DIR/deploy/ovh-sing/nginx.canvas.v-claw.org.bootstrap.conf}"
 NGINX_AVAILABLE="/etc/nginx/sites-available/$DOMAIN.conf"
@@ -40,8 +41,9 @@ require_min_env SUB2API_CANVAS_BFF_SECRET 32
 require_min_env CANVAS_PROVIDER_MASTER_KEY 32
 require_min_env CANVAS_OBJECT_SIGNING_SECRET 32
 [ "$(env_value CANVAS_ORIGIN)" = "https://$DOMAIN" ] || fail "CANVAS_ORIGIN must be https://$DOMAIN"
-[ "$(env_value S3_PUBLIC_ENDPOINT)" = "https://$DOMAIN/storage" ] || fail "S3_PUBLIC_ENDPOINT must be https://$DOMAIN/storage"
+[ "$(env_value S3_PUBLIC_ENDPOINT)" = "https://$MEDIA_DOMAIN" ] || fail "S3_PUBLIC_ENDPOINT must be https://$MEDIA_DOMAIN"
 getent ahostsv4 "$DOMAIN" >/dev/null || fail "$DOMAIN has no resolvable A record; add DNS before deploying"
+getent ahostsv4 "$MEDIA_DOMAIN" >/dev/null || fail "$MEDIA_DOMAIN has no resolvable A record; add DNS before deploying"
 
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config --quiet
 
@@ -53,7 +55,7 @@ if ! sudo test -s "$CERT_DIR/fullchain.pem" || ! sudo test -s "$CERT_DIR/privkey
     sudo ln -sfn "$NGINX_AVAILABLE" "$NGINX_ENABLED"
     sudo nginx -t
     sudo systemctl reload nginx
-    sudo certbot certonly --webroot -w /var/www/certbot -d "$DOMAIN" --non-interactive --agree-tos --email "$certbot_email" --keep-until-expiring
+    sudo certbot certonly --webroot -w /var/www/certbot -d "$DOMAIN" -d "$MEDIA_DOMAIN" --non-interactive --agree-tos --email "$certbot_email" --keep-until-expiring
 fi
 
 sudo test -s "$CERT_DIR/fullchain.pem" || fail "TLS certificate was not issued for $DOMAIN"
@@ -69,6 +71,7 @@ curl --fail --retry 30 --retry-delay 2 --retry-all-errors --max-time 10 http://1
 curl --fail --retry 30 --retry-delay 2 --retry-all-errors --max-time 10 http://127.0.0.1:17372/ready >/dev/null
 curl --fail --retry 30 --retry-delay 2 --retry-all-errors --max-time 10 --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/" >/dev/null
 curl --fail --retry 30 --retry-delay 2 --retry-all-errors --max-time 10 --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/api/health" >/dev/null
+curl --fail --retry 30 --retry-delay 2 --retry-all-errors --max-time 10 --resolve "$MEDIA_DOMAIN:443:127.0.0.1" "https://$MEDIA_DOMAIN/minio/health/live" >/dev/null
 
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
 printf 'deployed Canvas stack: https://%s (sha=%s)\n' "$DOMAIN" "${DEPLOY_SHA:-unknown}"

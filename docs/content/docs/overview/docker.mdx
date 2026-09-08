@@ -32,9 +32,9 @@ This provisions PostgreSQL 16, runs the checked-in BFF migrations, creates the `
 
 ## OVH production stack
 
-The repository includes a production Compose stack and an SSH deployment workflow for `ovh-sing`. The stack keeps the frontend, BFF, PostgreSQL, and MinIO ports on loopback; host Nginx exposes only `https://canvas.v-claw.org`, proxies `/api/` to the BFF, and serves signed MinIO URLs under `/storage/`.
+The repository includes a production Compose stack and an SSH deployment workflow for `ovh-sing`. The stack keeps the frontend, BFF, PostgreSQL, and MinIO ports on loopback; host Nginx exposes `https://canvas.v-claw.org` for the iframe application and `https://media.canvas.v-claw.org` for signed MinIO reads. The media host preserves the S3 request path required by the signature, permits only `GET`/`HEAD`, and returns CORS headers only for the Canvas origin.
 
-Create `/srv/infinite-canvas/.env.production` on the server from `deploy/ovh-sing/env.production.example`, use mode `600`, and set the same `SUB2API_CANVAS_BFF_SECRET` in Sub2API. The deploy script requires a resolvable `canvas.v-claw.org` record and issues the certificate through Certbot on the first run. Configure these GitHub Actions secrets for automatic deployment on pushes to `main`: `OVH_SSH_HOST`, `OVH_SSH_USER`, `OVH_SSH_PRIVATE_KEY`, and `OVH_SSH_KNOWN_HOSTS`.
+Create `/srv/infinite-canvas/.env.production` on the server from `deploy/ovh-sing/env.production.example`, use mode `600`, and set the same `SUB2API_CANVAS_BFF_SECRET` in Sub2API. Create DNS records for both `canvas.v-claw.org` and `media.canvas.v-claw.org`; the deploy script issues one certificate containing both names on the first run. Configure these GitHub Actions secrets for automatic deployment on pushes to `main`: `OVH_SSH_HOST`, `OVH_SSH_USER`, `OVH_SSH_PRIVATE_KEY`, and `OVH_SSH_KNOWN_HOSTS`.
 
 Run the stack manually on the server with:
 

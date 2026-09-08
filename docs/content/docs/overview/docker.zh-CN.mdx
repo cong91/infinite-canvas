@@ -40,9 +40,9 @@ powershell -ExecutionPolicy Bypass -File scripts/smoke-bff-stack.ps1
 
 ## OVH 生产 stack
 
-仓库提供面向 `ovh-sing` 的生产 Compose stack 与 SSH 部署 workflow。前端、BFF、PostgreSQL 和 MinIO 端口都只绑定回环地址；主机 Nginx 只暴露 `https://canvas.v-claw.org`，将 `/api/` 转发到 BFF，并通过 `/storage/` 提供 MinIO 签名媒体地址。
+仓库提供面向 `ovh-sing` 的生产 Compose stack 与 SSH 部署 workflow。前端、BFF、PostgreSQL 和 MinIO 端口都只绑定回环地址；主机 Nginx 通过 `https://canvas.v-claw.org` 提供 iframe 应用和 BFF `/api/`，通过 `https://media.canvas.v-claw.org` 提供 MinIO 签名媒体读取。媒体域名保留 S3 签名所需的完整请求路径，Nginx 只允许 `GET`/`HEAD`，并且只向 Canvas origin 返回浏览器跨域读取 header。
 
-先在服务器创建 `/srv/infinite-canvas/.env.production`，可从 `deploy/ovh-sing/env.production.example` 复制，权限设为 `600`，并在 Sub2API 使用相同的 `SUB2API_CANVAS_BFF_SECRET`。首次部署要求 `canvas.v-claw.org` 已有可解析的 DNS 记录，脚本会通过 Certbot 申请证书。要在推送到 `main` 时自动部署，需要配置 GitHub Actions secrets：`OVH_SSH_HOST`、`OVH_SSH_USER`、`OVH_SSH_PRIVATE_KEY` 和 `OVH_SSH_KNOWN_HOSTS`。
+先在服务器创建 `/srv/infinite-canvas/.env.production`，可从 `deploy/ovh-sing/env.production.example` 复制，权限设为 `600`，并在 Sub2API 使用相同的 `SUB2API_CANVAS_BFF_SECRET`。首次部署要求 `canvas.v-claw.org` 与 `media.canvas.v-claw.org` 都已有可解析的 DNS 记录，脚本会通过 Certbot 申请一张同时覆盖两个域名的证书。要在推送到 `main` 时自动部署，需要配置 GitHub Actions secrets：`OVH_SSH_HOST`、`OVH_SSH_USER`、`OVH_SSH_PRIVATE_KEY` 和 `OVH_SSH_KNOWN_HOSTS`。
 
 在服务器手动部署：
 
