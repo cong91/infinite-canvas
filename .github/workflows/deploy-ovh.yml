@@ -57,4 +57,4 @@ jobs:
           OVH_SSH_USER: ${{ secrets.OVH_SSH_USER }}
           DEPLOY_SHA: ${{ github.sha }}
         run: |
-          ssh "$OVH_SSH_USER@$OVH_SSH_HOST" "cd /srv/infinite-canvas && DEPLOY_SHA='$DEPLOY_SHA' bash deploy/ovh-sing/deploy.sh"
+          ssh "$OVH_SSH_USER@$OVH_SSH_HOST" "cd /srv/infinite-canvas && DEPLOY_SHA='$DEPLOY_SHA' sudo -n bash deploy/ovh-sing/deploy.sh"
