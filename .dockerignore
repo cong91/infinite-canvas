@@ -9,6 +9,8 @@ docs/out
 web/.next
 web/node_modules
 web/out
+canvas-bff/node_modules
+canvas-bff/dist
 *.log
 .env*
 !.env.example

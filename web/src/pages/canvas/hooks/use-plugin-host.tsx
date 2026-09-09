@@ -55,14 +55,16 @@ export function usePluginHost(params: PluginHostParams) {
                 ensureReady(config);
                 const references = toReferences(options?.references);
                 const items = references.length ? await requestEdit(config, prompt, references, { signal: options?.signal }) : await requestGeneration(config, prompt, { signal: options?.signal });
-                const images = await Promise.all(items.map(async (item) => {
-                    try {
-                        return await imageToDataUrl({ dataUrl: item.dataUrl }, { signal: options?.signal });
-                    } catch (error) {
-                        if (options?.signal?.aborted) throw error;
-                        return item.dataUrl;
-                    }
-                }));
+                const images = await Promise.all(
+                    items.map(async (item) => {
+                        try {
+                            return await imageToDataUrl({ dataUrl: item.dataUrl }, { signal: options?.signal });
+                        } catch (error) {
+                            if (options?.signal?.aborted) throw error;
+                            return item.dataUrl;
+                        }
+                    }),
+                );
                 return { images };
             },
             generateVideo: async (prompt, options) => {

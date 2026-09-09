@@ -29,6 +29,29 @@ http://localhost:3000
 docker compose -f docker-compose.local.yml up -d --build
 ```
 
+如需单独测试 Canvas BFF 的基础设施，可启动隔离的 PostgreSQL 和 MinIO stack：
+
+```bash
+docker compose -f docker-compose.bff.local.yml -p infinite-canvas-bff up -d --build
+powershell -ExecutionPolicy Bypass -File scripts/smoke-bff-stack.ps1
+```
+
+该 stack 会启动 PostgreSQL 16、执行仓库中的 BFF 迁移、在 MinIO 创建 `canvas-media` bucket，并在 `http://localhost:17372` 启动持久化 BFF。非测试环境中的账户、项目、Provider、素材和生成记录写入 PostgreSQL，媒体写入 MinIO；在 `canvas-bff` 中配置 stack 连接变量后运行 `npm run test:integration` 可验证真实持久化与签名媒体读取。停止命令为 `docker compose -f docker-compose.bff.local.yml -p infinite-canvas-bff down`；只有确认要删除测试数据时才添加 `-v`。
+
+## OVH 生产 stack
+
+仓库提供面向 `ovh-sing` 的生产 Compose stack 与 SSH 部署 workflow。前端、BFF、PostgreSQL 和 MinIO 端口都只绑定回环地址；主机 Nginx 通过 `https://canvas.v-claw.org` 提供 iframe 应用和 BFF `/api/`，通过 `https://media.canvas.v-claw.org` 提供 MinIO 签名媒体读取。媒体域名保留 S3 签名所需的完整请求路径，Nginx 只允许 `GET`/`HEAD`，并且只向 Canvas origin 返回浏览器跨域读取 header。
+
+先在服务器创建 `/srv/infinite-canvas/.env.production`，可从 `deploy/ovh-sing/env.production.example` 复制，权限设为 `600`，并在 Sub2API 使用相同的 `SUB2API_CANVAS_BFF_SECRET`。首次部署要求 `canvas.v-claw.org` 与 `media.canvas.v-claw.org` 都已有可解析的 DNS 记录，脚本会通过 Certbot 申请一张同时覆盖两个域名的证书。要在推送到 `main` 时自动部署，需要配置 GitHub Actions secrets：`OVH_SSH_HOST`、`OVH_SSH_USER`、`OVH_SSH_PRIVATE_KEY` 和 `OVH_SSH_KNOWN_HOSTS`。
+
+在服务器手动部署：
+
+```bash
+DEPLOY_SHA=manual bash deploy/ovh-sing/deploy.sh
+```
+
+脚本会检查生产 secret、DNS、TLS、Compose 配置、数据库迁移、BFF readiness 以及同源 HTTPS 健康状态；任一前置条件缺失时会在切换流量前停止。
+
 ## 文档站镜像
 
 文档站位于 `docs/` 目录，按带服务端能力的 Next.js standalone 应用单独构建，不打进主应用镜像。

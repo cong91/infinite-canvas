@@ -1,0 +1,1 @@
+ALTER TABLE canvas_generations ADD COLUMN IF NOT EXISTS input_hash TEXT NOT NULL DEFAULT '';

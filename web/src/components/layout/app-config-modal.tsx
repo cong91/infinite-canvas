@@ -1,6 +1,6 @@
 import { App, Button, Form, Input, Modal, Progress, Select, Tabs } from "antd";
 import type { TFunction } from "i18next";
-import { Cloud, Download, Pencil, Plus, RefreshCw, Trash2, Upload, Wifi } from "lucide-react";
+import { Cloud, Download, Pencil, Plus, RefreshCw, ShieldCheck, Trash2, Upload, Wifi } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -14,7 +14,20 @@ import { exportAppConfig, importAppConfig } from "@/services/config-file";
 import { syncAppDataToWebdav, type AppSyncDomainKey, type AppSyncProgressEvent } from "@/services/app-sync";
 import { testWebdavConnection, WEBDAV_MANIFEST_FILE_NAME } from "@/services/webdav-sync";
 import { audioFormatOptions, audioVoiceOptions, normalizeAudioSpeedValue } from "@/lib/audio-generation";
-import { createModelChannel, modelOptionsFromChannels, normalizeModelOptionValue, selectableModelsByCapability, useConfigStore, type AiConfig, type ApiCallFormat, type ConfigTabKey, type ModelCapability, type ModelChannel } from "@/stores/use-config-store";
+import {
+    createModelChannel,
+    modelOptionsFromChannels,
+    normalizeModelOptionValue,
+    selectableModelsByCapability,
+    useConfigStore,
+    type AiConfig,
+    type ApiCallFormat,
+    type ConfigTabKey,
+    type ModelCapability,
+    type ModelChannel,
+} from "@/stores/use-config-store";
+import { useCanvasAccountStore } from "@/stores/use-canvas-account-store";
+import { useCanvasProviderStore } from "@/stores/use-canvas-provider-store";
 
 type ModelGroup = {
     capability: ModelCapability;
@@ -66,8 +79,28 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
     const clearPromptContinue = useConfigStore((state) => state.clearPromptContinue);
     const webdavReady = Boolean(webdav.url.trim());
     const editingChannel = config.channels.find((channel) => channel.id === editingChannelId) || null;
+    const canvasAccountStatus = useCanvasAccountStore((state) => state.status);
+    const canvasAccount = useCanvasAccountStore((state) => state.account);
+    const canvasProviders = useCanvasProviderStore((state) => state.providers);
+    const canvasCatalog = useCanvasProviderStore((state) => state.catalog);
+    const canvasProviderStatus = useCanvasProviderStore((state) => state.status);
+    const canvasProviderError = useCanvasProviderStore((state) => state.error);
+    const selectedCanvasProviderId = useCanvasProviderStore((state) => state.selectedProviderId);
+    const selectCanvasProvider = useCanvasProviderStore((state) => state.select);
+    const loadCanvasProviders = useCanvasProviderStore((state) => state.load);
+    const loadCanvasCatalog = useCanvasProviderStore((state) => state.loadCatalog);
+    const createCanvasProvider = useCanvasProviderStore((state) => state.create);
+    const [selectedCatalogKeyId, setSelectedCatalogKeyId] = useState("");
+    const [canvasProviderName, setCanvasProviderName] = useState("");
+    const [savingCanvasProvider, setSavingCanvasProvider] = useState(false);
     const locale = i18n.resolvedLanguage as AppLocale;
     useEffect(() => setActiveTab(initialTab), [initialTab]);
+
+    useEffect(() => {
+        if (activeTab !== "channels" || canvasAccountStatus !== "authenticated") return;
+        void loadCanvasProviders();
+        void loadCanvasCatalog();
+    }, [activeTab, canvasAccountStatus, loadCanvasCatalog, loadCanvasProviders]);
 
     const saveConfig = (nextConfig: AiConfig) => {
         (Object.keys(nextConfig) as Array<keyof AiConfig>).forEach((key) => updateConfig(key, nextConfig[key]));
@@ -93,6 +126,29 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
     };
 
     const updateChannels = (channels: ModelChannel[]) => saveConfig(withChannels(config, channels));
+
+    const saveCanvasProvider = async () => {
+        const catalogKey = canvasCatalog?.keys.find((item) => item.id === selectedCatalogKeyId);
+        if (!catalogKey) return;
+        setSavingCanvasProvider(true);
+        try {
+            await createCanvasProvider({
+                name: canvasProviderName.trim() || catalogKey.name,
+                catalogKeyId: catalogKey.id,
+                providerType: catalogKey.providerType,
+                model: catalogKey.model,
+                group: catalogKey.group,
+                channel: catalogKey.channel,
+            });
+            setSelectedCatalogKeyId("");
+            setCanvasProviderName("");
+            message.success(t("config.account.providerSaved", { defaultValue: "Provider saved" }));
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : t("config.account.providerSaveFailed", { defaultValue: "Provider could not be saved" }));
+        } finally {
+            setSavingCanvasProvider(false);
+        }
+    };
 
     const addChannel = () => {
         const channel = createModelChannel({ name: t("config.channels.numberedName", { count: config.channels.length + 1 }) });
@@ -185,6 +241,97 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                         label: t("config.tabs.channels"),
                         children: (
                             <div>
+                                <section className="mb-4 rounded-lg border border-stone-200 p-3 dark:border-stone-800">
+                                    <div className="flex flex-wrap items-start justify-between gap-3">
+                                        <div>
+                                            <div className="flex items-center gap-2 text-sm font-semibold">
+                                                <ShieldCheck className="size-4" />
+                                                {t("config.account.title", { defaultValue: "Canvas account" })}
+                                            </div>
+                                            {canvasAccountStatus === "authenticated" && canvasAccount ? (
+                                                <div className="mt-1 text-xs text-stone-500">
+                                                    {t("config.account.signedInAs", { defaultValue: "Signed in through Sub2API as {{name}}", name: canvasAccount.displayName })}
+                                                    {canvasAccount.email ? ` · ${canvasAccount.email}` : ""}
+                                                </div>
+                                            ) : canvasAccountStatus === "loading" ? (
+                                                <div className="mt-1 text-xs text-stone-500">{t("config.account.loading", { defaultValue: "Verifying Canvas session…" })}</div>
+                                            ) : (
+                                                <div className="mt-1 text-xs text-stone-500">{t("config.account.unauthenticated", { defaultValue: "Open Canvas from the Sub2API custom menu to sign in." })}</div>
+                                            )}
+                                        </div>
+                                        {canvasAccountStatus === "authenticated" ? (
+                                            <Button
+                                                size="small"
+                                                icon={<RefreshCw className="size-3.5" />}
+                                                loading={canvasProviderStatus === "loading"}
+                                                onClick={() => {
+                                                    void loadCanvasProviders();
+                                                    void loadCanvasCatalog();
+                                                }}
+                                            >
+                                                {t("config.account.refresh", { defaultValue: "Refresh" })}
+                                            </Button>
+                                        ) : null}
+                                    </div>
+                                    {canvasAccountStatus === "authenticated" ? (
+                                        <>
+                                            {canvasProviderError ? (
+                                                <div role="alert" className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-red-200 px-3 py-2 text-xs text-red-700 dark:border-red-900/60 dark:text-red-300">
+                                                    <span>{canvasProviderError}</span>
+                                                    <Button
+                                                        size="small"
+                                                        icon={<RefreshCw className="size-3.5" />}
+                                                        onClick={() => {
+                                                            void loadCanvasProviders();
+                                                            void loadCanvasCatalog();
+                                                        }}
+                                                    >
+                                                        {t("common.retry")}
+                                                    </Button>
+                                                </div>
+                                            ) : null}
+                                            <div className="mt-3 text-xs font-medium text-stone-600 dark:text-stone-300">{t("config.account.savedProviders", { defaultValue: "Canvas providers" })}</div>
+                                            {canvasProviders.length ? (
+                                                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                                                    {canvasProviders.map((provider) => (
+                                                        <button
+                                                            type="button"
+                                                            key={provider.id}
+                                                            onClick={() => selectCanvasProvider(provider.id)}
+                                                            className={`w-full rounded-md border px-3 py-2 text-left transition-colors ${selectedCanvasProviderId === provider.id ? "border-primary bg-primary/5" : "border-stone-200 dark:border-stone-800"}`}
+                                                        >
+                                                            <div className="truncate text-sm font-medium">{provider.name}</div>
+                                                            <div className="mt-1 text-xs text-stone-500">
+                                                                {provider.maskedKey} · {provider.providerType}
+                                                            </div>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <div className="mt-1 text-xs text-stone-500">{t("config.account.emptyProviders", { defaultValue: "No Canvas providers saved yet." })}</div>
+                                            )}
+                                            <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
+                                                <Form.Item label={t("config.account.selectKey", { defaultValue: "Sub2API API Key" })} className="mb-0">
+                                                    <Select
+                                                        className="w-full"
+                                                        value={selectedCatalogKeyId || undefined}
+                                                        placeholder={t("config.account.selectKeyPlaceholder", { defaultValue: "Choose a key" })}
+                                                        loading={canvasProviderStatus === "loading"}
+                                                        options={(canvasCatalog?.keys || []).map((item) => ({ value: item.id, label: `${item.name}${item.maskedKey ? ` · ${item.maskedKey}` : ""}` }))}
+                                                        onChange={setSelectedCatalogKeyId}
+                                                        notFoundContent={t("config.account.emptyCatalog", { defaultValue: "No API keys available" })}
+                                                    />
+                                                </Form.Item>
+                                                <Form.Item label={t("config.account.providerName", { defaultValue: "Provider name" })} className="mb-0">
+                                                    <Input value={canvasProviderName} placeholder={t("config.channels.newName")} onChange={(event) => setCanvasProviderName(event.target.value)} />
+                                                </Form.Item>
+                                                <Button type="primary" disabled={!selectedCatalogKeyId} loading={savingCanvasProvider} onClick={() => void saveCanvasProvider()}>
+                                                    {t("config.account.saveProvider", { defaultValue: "Save provider" })}
+                                                </Button>
+                                            </div>
+                                        </>
+                                    ) : null}
+                                </section>
                                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                                     <div className="text-xs text-stone-500">{t("config.channels.description")}</div>
                                     <Button type="primary" icon={<Plus className="size-4" />} onClick={addChannel}>

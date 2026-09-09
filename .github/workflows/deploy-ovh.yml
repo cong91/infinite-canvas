@@ -1,0 +1,60 @@
+name: Deploy Infinite Canvas to OVH
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: infinite-canvas-ovh-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build and deploy on ovh-sing
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          OVH_SSH_PRIVATE_KEY: ${{ secrets.OVH_SSH_PRIVATE_KEY }}
+          OVH_SSH_KNOWN_HOSTS: ${{ secrets.OVH_SSH_KNOWN_HOSTS }}
+        run: |
+          test -n "$OVH_SSH_PRIVATE_KEY"
+          test -n "$OVH_SSH_KNOWN_HOSTS"
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$OVH_SSH_PRIVATE_KEY" > "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$OVH_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/id_ed25519" "$HOME/.ssh/known_hosts"
+
+      - name: Upload source to ovh-sing
+        env:
+          OVH_SSH_HOST: ${{ secrets.OVH_SSH_HOST }}
+          OVH_SSH_USER: ${{ secrets.OVH_SSH_USER }}
+        run: |
+          test -n "$OVH_SSH_HOST"
+          test -n "$OVH_SSH_USER"
+          tar \
+            --exclude=.git \
+            --exclude=.beads \
+            --exclude=.codex \
+            --exclude=.env \
+            --exclude=.env.* \
+            --exclude='**/node_modules' \
+            --exclude='**/dist' \
+            --exclude='web/public/plugins' \
+            --exclude='docs/.next' \
+            -czf - . | ssh "$OVH_SSH_USER@$OVH_SSH_HOST" 'mkdir -p /srv/infinite-canvas && tar -xzf - -C /srv/infinite-canvas'
+
+      - name: Build and deploy Docker stack
+        env:
+          OVH_SSH_HOST: ${{ secrets.OVH_SSH_HOST }}
+          OVH_SSH_USER: ${{ secrets.OVH_SSH_USER }}
+          DEPLOY_SHA: ${{ github.sha }}
+        run: |
+          ssh "$OVH_SSH_USER@$OVH_SSH_HOST" "cd /srv/infinite-canvas && DEPLOY_SHA='$DEPLOY_SHA' bash deploy/ovh-sing/deploy.sh"

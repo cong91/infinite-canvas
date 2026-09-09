@@ -1,9 +1,11 @@
-import { Button, Modal } from "antd";
+import { App, Button, Modal } from "antd";
 import { useTranslation } from "react-i18next";
 
 import { useAssetStore } from "@/stores/use-asset-store";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useCanvasUiStore } from "@/stores/canvas/use-canvas-ui-store";
+import { canvasBff } from "@/services/api/canvas-bff";
+import { useCanvasAccountStore } from "@/stores/use-canvas-account-store";
 
 export function CanvasDeleteProjectsDialog() {
     const { t } = useTranslation();
@@ -12,7 +14,17 @@ export function CanvasDeleteProjectsDialog() {
     const removeSelectedIds = useCanvasUiStore((state) => state.removeSelectedProjectIds);
     const deleteProjects = useCanvasStore((state) => state.deleteProjects);
     const cleanupImages = useAssetStore((state) => state.cleanupImages);
-    const confirm = () => {
+    const accountStatus = useCanvasAccountStore((state) => state.status);
+    const { message } = App.useApp();
+    const confirm = async () => {
+        if (accountStatus === "authenticated") {
+            const results = await Promise.allSettled(ids.map((id) => canvasBff.deleteProject(id)));
+            const failure = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
+            if (failure) {
+                message.error(failure.reason instanceof Error ? failure.reason.message : t("canvas.project.deleteFailed", { defaultValue: "Canvas project could not be deleted" }));
+                return;
+            }
+        }
         deleteProjects(ids);
         cleanupImages();
         removeSelectedIds(ids);
@@ -28,7 +40,7 @@ export function CanvasDeleteProjectsDialog() {
             footer={
                 <>
                     <Button onClick={() => setDeleteIds([])}>{t("common.cancel")}</Button>
-                    <Button danger type="primary" onClick={confirm}>
+                    <Button danger type="primary" onClick={() => void confirm()}>
                         {t("common.delete")}
                     </Button>
                 </>

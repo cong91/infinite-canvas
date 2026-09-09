@@ -325,7 +325,16 @@ export default function ImagePage() {
             const image = result[0];
             if (!image) throw new Error(t("imageWorkbench.missingResult"));
             const stored = await uploadImage(image.dataUrl);
-            const nextImage: GeneratedImage = { id: image.id, dataUrl: stored.url, ...(stored.storageKey ? { storageKey: stored.storageKey } : {}), durationMs: performance.now() - itemStartedAt, width: stored.width, height: stored.height, bytes: stored.bytes, mimeType: stored.mimeType };
+            const nextImage: GeneratedImage = {
+                id: image.id,
+                dataUrl: stored.url,
+                ...(stored.storageKey ? { storageKey: stored.storageKey } : {}),
+                durationMs: performance.now() - itemStartedAt,
+                width: stored.width,
+                height: stored.height,
+                bytes: stored.bytes,
+                mimeType: stored.mimeType,
+            };
             setResults((value) => updateResultAt(value, index, { status: "success", image: nextImage }));
             return nextImage;
         } catch (error) {
