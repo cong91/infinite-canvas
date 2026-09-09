@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createApp, type CanvasBffConfig } from "../src/server.js";
+import type { CanvasBffConfig } from "../src/config/config.js";
+import { startTestApp } from "./helpers/app.js";
 import { InMemorySessionRepository, SessionService } from "../src/auth/session-service.js";
 import { Sub2ApiClient } from "../src/auth/sub2api-client.js";
 
@@ -15,22 +16,13 @@ const config: CanvasBffConfig = {
 };
 
 async function startApp(fetchImpl: typeof fetch) {
-    const app = createApp(config, {
+    return startTestApp(config, {
         auth: {
-            canvasOrigin: config.canvasOrigin,
             sub2ApiClient: new Sub2ApiClient(config.sub2ApiBaseUrl, fetchImpl, 5_000, bffSecret),
             sessionService: new SessionService(new InMemorySessionRepository()),
             secureCookies: true,
         },
     });
-    const server = app.listen(0);
-    await new Promise<void>((resolve) => server.once("listening", resolve));
-    const address = server.address();
-    assert(address && typeof address !== "string");
-    return {
-        url: `http://127.0.0.1:${address.port}`,
-        close: () => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())),
-    };
 }
 
 function jsonResponse(body: unknown, status = 200): Response {

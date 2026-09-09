@@ -3,6 +3,7 @@ import type { ProviderRepository } from "../providers/repository.js";
 import type { GenerationRecord, GenerationRepository } from "../generations/repository.js";
 import type { ObjectStorage } from "../storage/object-storage.js";
 import type { ObjectStorageRetention } from "../storage/retention.js";
+import { Injectable } from "@nestjs/common";
 
 export type ProviderResult =
     | { status: "succeeded"; data: Buffer | Uint8Array | string; contentType: string; providerUrl?: string }
@@ -78,6 +79,7 @@ export class GenerationWorker {
     }
 }
 
+@Injectable()
 export class GenerationWorkerLoop {
     private timer: ReturnType<typeof setInterval> | undefined;
     private running = false;
@@ -87,9 +89,9 @@ export class GenerationWorkerLoop {
     start(): void {
         if (this.timer) return;
         const intervalMs = this.options.intervalMs ?? 1_000;
-        this.timer = setInterval(() => void this.tick(), intervalMs);
+        this.timer = setInterval(() => void this.tick().catch((error) => console.warn("Canvas generation worker tick failed", error)), intervalMs);
         this.timer.unref?.();
-        void this.tick();
+        void this.tick().catch((error) => console.warn("Canvas generation worker tick failed", error));
     }
 
     async tick(): Promise<void> {

@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { InMemoryAssetRepository } from "../src/assets/repository.js";
 import { ProviderSecretBox } from "../src/crypto/secret-box.js";
-import { GenerationConflictError, GenerationService } from "../src/generations/service.js";
+import { GenerationConflictError, GenerationService } from "../src/generations/generation-domain.service.js";
 import { InMemoryGenerationRepository } from "../src/generations/repository.js";
 import { InMemoryProjectRepository } from "../src/projects/repository.js";
 import { InMemoryProviderRepository } from "../src/providers/repository.js";

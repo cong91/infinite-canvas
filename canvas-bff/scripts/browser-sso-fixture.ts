@@ -1,6 +1,6 @@
 import express from "express";
 
-import { createApp } from "../src/server.js";
+import { createCanvasApplication } from "../src/bootstrap.js";
 
 const canvasOrigin = "http://localhost:3002";
 const bffSecret = "browser-sso-fixture-shared-secret-0123456789";
@@ -24,20 +24,22 @@ upstream.get("/api/v1/auth/me", (request, response) => {
 });
 
 const upstreamServer = upstream.listen(17373, "127.0.0.1");
-const bffServer = createApp({
+const bffApp = await createCanvasApplication({
     port: 17374,
     canvasOrigin,
     sub2ApiBaseUrl: "http://127.0.0.1:17373",
     sub2ApiCanvasBffSecret: bffSecret,
     environment: "test",
-}).listen(17374, "127.0.0.1", () => {
-    console.info(`Browser SSO fixture ready: ${canvasOrigin}/?launch_code=${launchCode}`);
 });
+await bffApp.listen(17374, "127.0.0.1");
+console.info(`Browser SSO fixture ready: ${canvasOrigin}/?launch_code=${launchCode}`);
 
-function shutdown() {
-    upstreamServer.close();
-    bffServer.close();
+async function shutdown() {
+    await Promise.all([
+        new Promise<void>((resolve, reject) => upstreamServer.close((error) => error ? reject(error) : resolve())),
+        bffApp.close(),
+    ]);
 }
 
-process.once("SIGINT", shutdown);
-process.once("SIGTERM", shutdown);
+process.once("SIGINT", () => void shutdown());
+process.once("SIGTERM", () => void shutdown());

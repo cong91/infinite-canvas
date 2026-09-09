@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import test from "node:test";
 
 import { ProviderSecretBox } from "../src/crypto/secret-box.js";
-import { createDatabasePool } from "../src/db.js";
+import { createDatabasePool } from "../src/database/database-pool.js";
 import { PostgresSessionRepository } from "../src/auth/postgres-session-repository.js";
 import { PostgresProjectRepository } from "../src/projects/postgres-repository.js";
 import { PostgresProviderRepository } from "../src/providers/postgres-repository.js";

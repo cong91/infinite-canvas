@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { canvasBffConfigSchema } from "../src/config.js";
+import { canvasBffConfigSchema } from "../src/config/config.js";
 
 test("production configuration requires an HTTPS Canvas origin", () => {
     const result = canvasBffConfigSchema.safeParse({

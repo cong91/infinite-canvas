@@ -4,7 +4,7 @@ import test from "node:test";
 import { InMemoryAssetRepository } from "../src/assets/repository.js";
 import { ProviderSecretBox } from "../src/crypto/secret-box.js";
 import { InMemoryGenerationRepository } from "../src/generations/repository.js";
-import { GenerationService } from "../src/generations/service.js";
+import { GenerationService } from "../src/generations/generation-domain.service.js";
 import { InMemoryObjectStorage } from "../src/storage/object-storage.js";
 import { ObjectStorageRetention } from "../src/storage/retention.js";
 import { GenerationWorker, GenerationWorkerLoop, type GenerationProvider } from "../src/worker/generation-worker.js";

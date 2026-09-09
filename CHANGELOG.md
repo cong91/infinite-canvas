@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- [调整] 将 Canvas BFF 后端统一迁移到 NestJS 模块化运行时，保留 PostgreSQL、MinIO、SSO 和生成 worker 合约。
 - [新增] Canvas BFF 支持按总媒体字节数执行逻辑保留策略，超出上限时按最旧优先删除 MinIO 对象及对应素材记录。
 - [调整] 隐藏前端指向项目上游的 GitHub 入口与发布版本信息，保留其他 GitHub 集成和模块信息。
 - [调整] Sub2API 到 Canvas 的 iframe 登录改为一次性 launch code 服务器交换，浏览器和 custom iframe 不再接收 dashboard JWT。

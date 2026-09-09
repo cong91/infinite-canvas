@@ -13,6 +13,8 @@ export type CreateGenerationInput = {
     clientRequestId: string;
 };
 
+export type GenerationServiceOptions = { generations: GenerationRepository; projects: ProjectRepository; providers: ProviderRepository };
+
 export class GenerationConflictError extends HttpError {
     constructor() {
         super(409, "GENERATION_IDEMPOTENCY_CONFLICT", "clientRequestId already belongs to a different generation");
@@ -24,7 +26,7 @@ export class GenerationService {
     private readonly projects: ProjectRepository;
     private readonly providers: ProviderRepository;
 
-    constructor(options: { generations: GenerationRepository; projects: ProjectRepository; providers: ProviderRepository }) {
+    constructor(options: GenerationServiceOptions) {
         this.generations = options.generations;
         this.projects = options.projects;
         this.providers = options.providers;

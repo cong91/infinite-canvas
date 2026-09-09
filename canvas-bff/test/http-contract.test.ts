@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createApp, type CanvasBffConfig } from "../src/server.js";
+import type { CanvasBffConfig } from "../src/config/config.js";
+import { startTestApp } from "./helpers/app.js";
 import { redactHeaders, redactSecrets, redactUrl } from "../src/http/redaction.js";
 import { sub2ApiIdentityFixture } from "./fixtures/sub2api.js";
 
@@ -13,14 +14,11 @@ const config: CanvasBffConfig = {
 };
 
 async function request(path: string, init?: RequestInit) {
-    const server = createApp(config).listen(0);
-    await new Promise<void>((resolve) => server.once("listening", () => resolve()));
-    const address = server.address();
-    assert(address && typeof address !== "string");
+    const app = await startTestApp(config);
     try {
-        return await fetch(`http://127.0.0.1:${address.port}${path}`, init);
+        return await fetch(`${app.url}${path}`, init);
     } finally {
-        await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+        await app.close();
     }
 }
 
@@ -54,17 +52,13 @@ test("rejects a request from an origin other than the exact canvas origin", asyn
 });
 
 test("rejects state-changing requests without the exact Canvas origin", async () => {
-    const app = createApp(config);
-    const server = app.listen(0);
-    await new Promise<void>((resolve) => server.once("listening", resolve));
-    const address = server.address();
-    assert(address && typeof address !== "string");
+    const app = await startTestApp(config);
     try {
-        const response = await fetch(`http://127.0.0.1:${address.port}/api/v1/projects`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "forbidden" }) });
+        const response = await fetch(`${app.url}/api/v1/projects`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "forbidden" }) });
         assert.equal(response.status, 403);
         assert.equal((await response.json()).code, "ORIGIN_REQUIRED");
     } finally {
-        await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+        await app.close();
     }
 });
 
