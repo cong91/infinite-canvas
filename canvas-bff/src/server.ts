@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import express, { type NextFunction, type Request, type Response } from "express";
+import type { Pool } from "pg";
 
 import { loadConfig, type CanvasBffConfig } from "./config.js";
 import { assertDatabaseReady, createDatabasePool } from "./db.js";
@@ -164,7 +165,7 @@ function createPersistentDependencies(config: CanvasBffConfig) {
         accessKeyId: requiredEnvironment(environment, "S3_ACCESS_KEY_ID"),
         secretAccessKey: requiredEnvironment(environment, "S3_SECRET_ACCESS_KEY"),
     });
-    const retention = config.storageRetentionMaxBytes ? new ObjectStorageRetention({ storage: objectStorage, assets, maxBytes: config.storageRetentionMaxBytes }) : undefined;
+    const retention = config.storageRetentionMaxBytes ? new ObjectStorageRetention({ storage: objectStorage, assets, maxBytes: config.storageRetentionMaxBytes, lock: createRetentionLock(pool) }) : undefined;
     return {
         pool,
         auth: { canvasOrigin: config.canvasOrigin, sub2ApiClient: new Sub2ApiClient(config.sub2ApiBaseUrl, fetch, 5_000, config.sub2ApiCanvasBffSecret), sessionService, secureCookies: config.environment === "production" },
@@ -174,6 +175,27 @@ function createPersistentDependencies(config: CanvasBffConfig) {
         generations: { service: new GenerationService({ generations, projects, providers }), generations, assets, objectStorage },
         objectStorage,
         ...(retention ? { retention } : {}),
+    };
+}
+
+function createRetentionLock(pool: Pool) {
+    return {
+        async acquire() {
+            const client = await pool.connect();
+            try {
+                await client.query("SELECT pg_advisory_lock(hashtext($1))", ["infinite-canvas-storage-retention"]);
+            } catch (error) {
+                client.release();
+                throw error;
+            }
+            return async () => {
+                try {
+                    await client.query("SELECT pg_advisory_unlock(hashtext($1))", ["infinite-canvas-storage-retention"]);
+                } finally {
+                    client.release();
+                }
+            };
+        },
     };
 }
 

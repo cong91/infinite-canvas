@@ -38,7 +38,10 @@ export class GenerationWorker {
     async runOnce(): Promise<GenerationRecord | undefined> {
         const now = new Date(this.now());
         const generation = await this.generations.claimNext(this.workerId, now, this.leaseMs);
-        if (!generation) return undefined;
+        if (!generation) {
+            await this.enforceRetention();
+            return undefined;
+        }
         if (generation.status === "cancelled") return undefined;
         const result = generation.providerTaskId ? await this.provider.poll(generation) : await this.provider.start(generation);
         if (result.status === "pending") {
@@ -61,14 +64,17 @@ export class GenerationWorker {
             metadata: { generationId: generation.id, contentType: stored.contentType, size: stored.size, checksum: stored.checksum },
         });
         await this.generations.complete(generation.id, this.workerId, asset.id);
-        if (this.retention) {
-            try {
-                await this.retention.enforce({ protectedKeys: [stored.key] });
-            } catch (error) {
-                console.warn("Canvas storage retention failed", error);
-            }
-        }
+        await this.enforceRetention([stored.key]);
         return this.generations.get(generation.accountId, generation.id);
+    }
+
+    private async enforceRetention(protectedKeys: string[] = []): Promise<void> {
+        if (!this.retention) return;
+        try {
+            await this.retention.enforce({ protectedKeys });
+        } catch (error) {
+            console.warn("Canvas storage retention failed", error);
+        }
     }
 }
 

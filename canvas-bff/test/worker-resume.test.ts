@@ -167,3 +167,26 @@ test("worker enforces media retention after persisting a completed generation", 
     assert.equal(fixtureData.assets.list(fixtureData.accountId).some((asset) => asset.objectKey === old.key), false);
     assert.equal((await fixtureData.storage.list(fixtureData.accountId)).length, 1);
 });
+
+test("worker enforces media retention even when no generation is queued", async () => {
+    const fixtureData = fixture();
+    const old = await fixtureData.storage.put({ accountId: fixtureData.accountId, data: "old", contentType: "image/png" });
+    fixtureData.assets.create({ accountId: fixtureData.accountId, projectId: fixtureData.project.id, kind: "image", objectKey: old.key, metadata: {} });
+    const provider: GenerationProvider = {
+        async start() { throw new Error("provider must not be called"); },
+        async poll() { throw new Error("provider must not be called"); },
+    };
+    const worker = new GenerationWorker({
+        generationRepository: fixtureData.generations,
+        assetRepository: fixtureData.assets,
+        objectStorage: fixtureData.storage,
+        provider,
+        workerId: "idle-retention-worker",
+        retention: new ObjectStorageRetention({ storage: fixtureData.storage, assets: fixtureData.assets, maxBytes: 1 }),
+        now: fixtureData.clock,
+    });
+
+    assert.equal(await worker.runOnce(), undefined);
+    assert.equal(await fixtureData.storage.get(fixtureData.accountId, old.key), undefined);
+    assert.equal(fixtureData.assets.list(fixtureData.accountId).length, 0);
+});

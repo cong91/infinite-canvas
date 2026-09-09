@@ -17,7 +17,7 @@ For a local browser SSO gate, run `npm run dev:browser-sso-fixture` in one termi
 
 In non-test environments the BFF uses PostgreSQL repositories for accounts, sessions, projects, providers, assets and generations, plus S3-compatible object storage for generated media. In-memory adapters remain available only through explicit test dependencies. The persistent runtime starts a recoverable generation worker and uses the Sub2API HTTP provider adapter; authenticated browser sessions hydrate account-scoped projects and media assets from the BFF.
 
-Set `CANVAS_STORAGE_RETENTION_MAX_BYTES` to enable logical media retention. The OVH Compose file defaults this to 40 GiB (`42949672960` bytes). After a successful generation is stored, the worker sums object metadata and removes the oldest Canvas bucket objects until the total is at or below the configured byte cap, deleting matching asset rows as well. The just-created object is protected for that cleanup pass; if it alone exceeds the cap, it remains available. This is an application retention policy, not a filesystem quota.
+Set `CANVAS_STORAGE_RETENTION_MAX_BYTES` to enable logical media retention. The OVH Compose file defaults this to 40 GiB (`42949672960` bytes). Each worker tick sums object metadata and removes the oldest Canvas bucket objects until the total is at or below the configured byte cap, deleting matching asset rows as well. Production workers serialize this pass with a PostgreSQL advisory lock. The just-created object is protected for that cleanup pass; if it alone exceeds the cap, it remains available. This is an application retention policy, not a filesystem quota.
 
 ## Docker infrastructure smoke
 
