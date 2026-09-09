@@ -16,11 +16,14 @@ const urlOrigin = z.string().url().transform((value, context) => {
     }
 });
 
+const optionalPositiveInteger = z.preprocess((value) => typeof value === "string" && !value.trim() ? undefined : value, z.coerce.number().int().positive().optional());
+
 export const canvasBffConfigSchema = z.object({
     port: z.coerce.number().int().min(1).max(65535).default(DEFAULT_PORT),
     canvasOrigin: urlOrigin,
     sub2ApiBaseUrl: urlOrigin,
     sub2ApiCanvasBffSecret: z.string().trim().min(32).optional(),
+    storageRetentionMaxBytes: optionalPositiveInteger,
     environment: z.enum(["development", "test", "production"]).default("development"),
 }).superRefine((value, context) => {
     if (value.environment === "production" && !value.sub2ApiCanvasBffSecret) {
@@ -39,6 +42,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): CanvasBffConfi
         canvasOrigin: env.CANVAS_ORIGIN,
         sub2ApiBaseUrl: env.SUB2API_BASE_URL,
         sub2ApiCanvasBffSecret: env.SUB2API_CANVAS_BFF_SECRET,
+        storageRetentionMaxBytes: env.CANVAS_STORAGE_RETENTION_MAX_BYTES,
         environment: env.NODE_ENV,
     });
 }

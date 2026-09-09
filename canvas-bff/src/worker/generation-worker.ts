@@ -2,6 +2,7 @@ import type { AssetRepository } from "../assets/repository.js";
 import type { ProviderRepository } from "../providers/repository.js";
 import type { GenerationRecord, GenerationRepository } from "../generations/repository.js";
 import type { ObjectStorage } from "../storage/object-storage.js";
+import type { ObjectStorageRetention } from "../storage/retention.js";
 
 export type ProviderResult =
     | { status: "succeeded"; data: Buffer | Uint8Array | string; contentType: string; providerUrl?: string }
@@ -21,8 +22,9 @@ export class GenerationWorker {
     private readonly workerId: string;
     private readonly leaseMs: number;
     private readonly now: () => number;
+    private readonly retention?: ObjectStorageRetention;
 
-    constructor(options: { generationRepository: GenerationRepository; assetRepository: AssetRepository; objectStorage: ObjectStorage; provider: GenerationProvider; workerId: string; leaseMs?: number; now?: () => number }) {
+    constructor(options: { generationRepository: GenerationRepository; assetRepository: AssetRepository; objectStorage: ObjectStorage; provider: GenerationProvider; workerId: string; leaseMs?: number; now?: () => number; retention?: ObjectStorageRetention }) {
         this.generations = options.generationRepository;
         this.assets = options.assetRepository;
         this.storage = options.objectStorage;
@@ -30,6 +32,7 @@ export class GenerationWorker {
         this.workerId = options.workerId;
         this.leaseMs = options.leaseMs ?? 30_000;
         this.now = options.now ?? Date.now;
+        this.retention = options.retention;
     }
 
     async runOnce(): Promise<GenerationRecord | undefined> {
@@ -58,6 +61,13 @@ export class GenerationWorker {
             metadata: { generationId: generation.id, contentType: stored.contentType, size: stored.size, checksum: stored.checksum },
         });
         await this.generations.complete(generation.id, this.workerId, asset.id);
+        if (this.retention) {
+            try {
+                await this.retention.enforce({ protectedKeys: [stored.key] });
+            } catch (error) {
+                console.warn("Canvas storage retention failed", error);
+            }
+        }
         return this.generations.get(generation.accountId, generation.id);
     }
 }

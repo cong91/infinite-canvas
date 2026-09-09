@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
-import { GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
-import { type ObjectStorage, type ObjectStoragePutInput, type StoredObject } from "./object-storage.js";
+import { type ObjectStorage, type ObjectStoragePutInput, type StoredObject, type StoredObjectSummary } from "./object-storage.js";
 
 export type S3ObjectStorageOptions = {
     endpoint: string;
@@ -66,9 +66,24 @@ export class S3ObjectStorage implements ObjectStorage {
 
     async list(accountId: string): Promise<StoredObject[]> {
         const normalizedAccountId = normalizeSegment(accountId, "account id");
-        const result = await this.client.send(new ListObjectsV2Command({ Bucket: this.bucket, Prefix: `accounts/${normalizedAccountId}/` }));
-        const objects = await Promise.all((result.Contents ?? []).flatMap((item) => item.Key ? [this.get(normalizedAccountId, item.Key)] : []));
+        const objects = await Promise.all((await this.listMetadata(`accounts/${normalizedAccountId}/`)).map((item) => this.get(normalizedAccountId, item.key)));
         return objects.filter((item): item is StoredObject => Boolean(item));
+    }
+
+    async listAll(): Promise<StoredObjectSummary[]> {
+        return this.listMetadata("accounts/");
+    }
+
+    async delete(accountId: string, key: string): Promise<boolean> {
+        const normalizedAccountId = normalizeSegment(accountId, "account id");
+        const validKey = validateKey(key, normalizedAccountId);
+        try {
+            await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: validKey }));
+            return true;
+        } catch (error) {
+            if (isNotFound(error)) return false;
+            throw error;
+        }
     }
 
     async createSignedReadUrl(accountId: string, key: string, ttlSeconds: number): Promise<string> {
@@ -93,6 +108,22 @@ export class S3ObjectStorage implements ObjectStorage {
         const key = decodeURIComponent(parsed.pathname.slice(prefix.length));
         if (!key.startsWith(`accounts/${normalizedAccountId}/`)) return undefined;
         return this.get(normalizedAccountId, key);
+    }
+
+    private async listMetadata(prefix: string): Promise<StoredObjectSummary[]> {
+        const objects: StoredObjectSummary[] = [];
+        let continuationToken: string | undefined;
+        do {
+            const result = await this.client.send(new ListObjectsV2Command({ Bucket: this.bucket, Prefix: prefix, ContinuationToken: continuationToken }));
+            for (const item of result.Contents ?? []) {
+                const key = item.Key;
+                const match = key?.match(/^accounts\/([^/]+)\//);
+                if (!key || !match) continue;
+                objects.push({ key, accountId: match[1], size: Number(item.Size ?? 0), createdAt: item.LastModified ?? new Date(0) });
+            }
+            continuationToken = result.IsTruncated ? result.NextContinuationToken : undefined;
+        } while (continuationToken);
+        return objects;
     }
 }
 

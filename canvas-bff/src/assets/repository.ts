@@ -16,6 +16,7 @@ export interface AssetRepository {
     get(accountId: string, id: string): AssetRecord | undefined | Promise<AssetRecord | undefined>;
     create(input: Omit<AssetRecord, "id" | "createdAt">): AssetRecord | Promise<AssetRecord>;
     delete(accountId: string, id: string): boolean | Promise<boolean>;
+    deleteByObjectKey(accountId: string, objectKey: string): boolean | Promise<boolean>;
 }
 
 export class InMemoryAssetRepository implements AssetRepository {
@@ -41,6 +42,16 @@ export class InMemoryAssetRepository implements AssetRepository {
     delete(accountId: string, id: string): boolean {
         const record = this.records.get(id);
         return Boolean(record?.accountId === accountId && this.records.delete(id));
+    }
+
+    deleteByObjectKey(accountId: string, objectKey: string): boolean {
+        let deleted = false;
+        for (const [id, record] of this.records) {
+            if (record.accountId === accountId && record.objectKey === objectKey) {
+                deleted = this.records.delete(id) || deleted;
+            }
+        }
+        return deleted;
     }
 }
 

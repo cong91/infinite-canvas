@@ -28,6 +28,7 @@ import { S3ObjectStorage } from "./storage/s3-object-storage.js";
 import { PostgresAssetRepository } from "./assets/postgres-repository.js";
 import { HttpGenerationProvider } from "./providers/http-generation-provider.js";
 import { GenerationWorker, GenerationWorkerLoop } from "./worker/generation-worker.js";
+import { ObjectStorageRetention } from "./storage/retention.js";
 
 export function isAllowedOrigin(requestOrigin: string | undefined, canvasOrigin: string): boolean {
     if (!requestOrigin) return true;
@@ -111,6 +112,7 @@ export function createApp(config: CanvasBffConfig, dependencies: AppDependencies
             objectStorage: persistent.objectStorage,
             provider: new HttpGenerationProvider({ baseUrl: config.sub2ApiBaseUrl, providers: persistent.providers.providers, secretBox: persistent.providers.secretBox }),
             workerId: process.env.CANVAS_WORKER_ID || `canvas-bff-${process.pid}`,
+            ...(persistent.retention ? { retention: persistent.retention } : {}),
         }), { intervalMs: Number(process.env.CANVAS_WORKER_INTERVAL_MS || 1_000) });
     }
     app.use(createProviderRouter(providerOptions));
@@ -162,6 +164,7 @@ function createPersistentDependencies(config: CanvasBffConfig) {
         accessKeyId: requiredEnvironment(environment, "S3_ACCESS_KEY_ID"),
         secretAccessKey: requiredEnvironment(environment, "S3_SECRET_ACCESS_KEY"),
     });
+    const retention = config.storageRetentionMaxBytes ? new ObjectStorageRetention({ storage: objectStorage, assets, maxBytes: config.storageRetentionMaxBytes }) : undefined;
     return {
         pool,
         auth: { canvasOrigin: config.canvasOrigin, sub2ApiClient: new Sub2ApiClient(config.sub2ApiBaseUrl, fetch, 5_000, config.sub2ApiCanvasBffSecret), sessionService, secureCookies: config.environment === "production" },
@@ -170,6 +173,7 @@ function createPersistentDependencies(config: CanvasBffConfig) {
         assets: { assets, projects },
         generations: { service: new GenerationService({ generations, projects, providers }), generations, assets, objectStorage },
         objectStorage,
+        ...(retention ? { retention } : {}),
     };
 }
 

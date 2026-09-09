@@ -6,6 +6,7 @@ import { ProviderSecretBox } from "../src/crypto/secret-box.js";
 import { InMemoryGenerationRepository } from "../src/generations/repository.js";
 import { GenerationService } from "../src/generations/service.js";
 import { InMemoryObjectStorage } from "../src/storage/object-storage.js";
+import { ObjectStorageRetention } from "../src/storage/retention.js";
 import { GenerationWorker, GenerationWorkerLoop, type GenerationProvider } from "../src/worker/generation-worker.js";
 import { InMemoryProjectRepository } from "../src/projects/repository.js";
 import { InMemoryProviderRepository } from "../src/providers/repository.js";
@@ -134,4 +135,35 @@ test("worker loop drains work and stops without leaving a timer", async () => {
     loop.stop();
     assert.equal(calls, 1);
     assert.equal((await fixtureData.service.list(fixtureData.accountId))[0]?.status, "succeeded");
+});
+
+test("worker enforces media retention after persisting a completed generation", async () => {
+    const fixtureData = fixture();
+    const old = await fixtureData.storage.put({ accountId: fixtureData.accountId, data: "old", contentType: "image/png" });
+    fixtureData.assets.create({ accountId: fixtureData.accountId, projectId: fixtureData.project.id, kind: "image", objectKey: old.key, metadata: {} });
+    const generation = await fixtureData.service.create(fixtureData.accountId, {
+        projectId: fixtureData.project.id,
+        providerId: fixtureData.provider.id,
+        kind: "image",
+        input: { prompt: "new" },
+        clientRequestId: "request-retention-1",
+    });
+    const provider: GenerationProvider = {
+        async start() { return { status: "succeeded", data: Buffer.from("new"), contentType: "image/png" }; },
+        async poll() { throw new Error("poll is not expected"); },
+    };
+    const worker = new GenerationWorker({
+        generationRepository: fixtureData.generations,
+        assetRepository: fixtureData.assets,
+        objectStorage: fixtureData.storage,
+        provider,
+        workerId: "retention-worker",
+        retention: new ObjectStorageRetention({ storage: fixtureData.storage, assets: fixtureData.assets, maxBytes: 3 }),
+        now: fixtureData.clock,
+    });
+
+    assert.equal((await worker.runOnce())?.id, generation.id);
+    assert.equal(await fixtureData.storage.get(fixtureData.accountId, old.key), undefined);
+    assert.equal(fixtureData.assets.list(fixtureData.accountId).some((asset) => asset.objectKey === old.key), false);
+    assert.equal((await fixtureData.storage.list(fixtureData.accountId)).length, 1);
 });

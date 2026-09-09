@@ -17,10 +17,14 @@ export type StoredObject = {
     createdAt: Date;
 };
 
+export type StoredObjectSummary = Pick<StoredObject, "key" | "accountId" | "size" | "createdAt">;
+
 export interface ObjectStorage {
     put(input: ObjectStoragePutInput): Promise<StoredObject>;
     get(accountId: string, key: string): Promise<StoredObject | undefined>;
     list(accountId: string): Promise<StoredObject[]>;
+    listAll(): Promise<StoredObjectSummary[]>;
+    delete(accountId: string, key: string): Promise<boolean>;
     createSignedReadUrl(accountId: string, key: string, ttlSeconds: number): Promise<string>;
     readSignedUrl(accountId: string, signedUrl: string): Promise<StoredObject | undefined>;
 }
@@ -68,6 +72,16 @@ export class InMemoryObjectStorage implements ObjectStorage {
     async list(accountId: string): Promise<StoredObject[]> {
         const normalizedAccountId = normalizeSegment(accountId, "account id");
         return [...this.objects.values()].filter((record) => record.accountId === normalizedAccountId).map(cloneObject);
+    }
+
+    async listAll(): Promise<StoredObjectSummary[]> {
+        return [...this.objects.values()].map(toSummary);
+    }
+
+    async delete(accountId: string, key: string): Promise<boolean> {
+        const normalizedAccountId = normalizeSegment(accountId, "account id");
+        const record = this.objects.get(validateKey(key, normalizedAccountId));
+        return Boolean(record?.accountId === normalizedAccountId && this.objects.delete(key));
     }
 
     async createSignedReadUrl(accountId: string, key: string, ttlSeconds: number): Promise<string> {
@@ -124,4 +138,8 @@ function sign(value: string, secret: Buffer): string {
 
 function cloneObject(record: StoredObject): StoredObject {
     return { ...record, data: Buffer.from(record.data), createdAt: new Date(record.createdAt) };
+}
+
+function toSummary(record: StoredObject): StoredObjectSummary {
+    return { key: record.key, accountId: record.accountId, size: record.size, createdAt: new Date(record.createdAt) };
 }

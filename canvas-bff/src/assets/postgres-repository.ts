@@ -23,6 +23,10 @@ export class PostgresAssetRepository implements AssetRepository {
         const result = await this.pool.query("DELETE FROM canvas_assets WHERE account_id = $1 AND id = $2", [accountId, id]);
         return result.rowCount === 1;
     }
+    async deleteByObjectKey(accountId: string, objectKey: string): Promise<boolean> {
+        const result = await this.pool.query("DELETE FROM canvas_assets WHERE account_id = $1 AND object_key = $2", [accountId, objectKey]);
+        return (result.rowCount ?? 0) > 0;
+    }
 }
 
 function toAsset(row: Record<string, unknown>): AssetRecord {
