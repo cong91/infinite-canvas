@@ -1,12 +1,14 @@
 import { Check, Download, Pencil, Trash2, X } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Button, Input } from "antd";
+import { App, Button, Input } from "antd";
 import { useTranslation } from "react-i18next";
 
 import { useCanvasStore, type CanvasProject } from "@/stores/canvas/use-canvas-store";
 import { useCanvasUiStore } from "@/stores/canvas/use-canvas-ui-store";
 import { exportCanvasProjects } from "@/lib/canvas/canvas-export";
 import { hasAgentUrlBootstrap } from "@/lib/agent/agent-url-bootstrap";
+import { canvasBff } from "@/services/api/canvas-bff";
+import { useCanvasAccountStore } from "@/stores/use-canvas-account-store";
 
 export function CanvasProjectCard({ project }: { project: CanvasProject }) {
     const { i18n, t } = useTranslation();
@@ -21,15 +23,27 @@ export function CanvasProjectCard({ project }: { project: CanvasProject }) {
     const stopEditing = useCanvasUiStore((state) => state.stopEditingProject);
     const toggleSelected = useCanvasUiStore((state) => state.toggleSelectedProjectId);
     const setDeleteIds = useCanvasUiStore((state) => state.setDeleteProjectIds);
+    const accountStatus = useCanvasAccountStore((state) => state.status);
+    const { message } = App.useApp();
     const editing = editingId === project.id;
     const selected = selectedIds.includes(project.id);
     const open = () => {
         const agentHash = hasAgentUrlBootstrap(window.location.hash) ? window.location.hash : "";
         navigate(`/canvas/${project.id}${searchParams.toString() ? `?${searchParams.toString()}` : ""}${agentHash}`, { replace: Boolean(agentHash) });
     };
-    const saveTitle = () => {
+    const saveTitle = async () => {
+        const nextTitle = editingTitle.trim();
+        if (!nextTitle) return;
         renameProject(project.id, editingTitle);
         stopEditing();
+        if (accountStatus === "authenticated") {
+            try {
+                const saved = await canvasBff.updateProject(project.id, { name: nextTitle, ...(project.remoteRevision !== undefined ? { revision: project.remoteRevision } : {}) });
+                useCanvasStore.getState().updateProject(project.id, { remoteRevision: saved.revision });
+            } catch (error) {
+                message.error(error instanceof Error ? error.message : t("canvas.project.renameFailed", { defaultValue: "Canvas name could not be saved" }));
+            }
+        }
     };
 
     return (
@@ -55,9 +69,7 @@ export function CanvasProjectCard({ project }: { project: CanvasProject }) {
                         }}
                     >
                         <h2 className="truncate text-xl font-semibold">{project.title}</h2>
-                        <p className="mt-3 text-sm leading-6 text-stone-600 dark:text-stone-400">
-                            {t("canvas.project.stats", { nodes: project.nodes.length, connections: project.connections.length })}
-                        </p>
+                        <p className="mt-3 text-sm leading-6 text-stone-600 dark:text-stone-400">{t("canvas.project.stats", { nodes: project.nodes.length, connections: project.connections.length })}</p>
                     </button>
                 )}
             </div>
@@ -66,7 +78,7 @@ export function CanvasProjectCard({ project }: { project: CanvasProject }) {
                 <div className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
                     {editing ? (
                         <>
-                            <Button type="text" size="small" shape="circle" icon={<Check className="size-4" />} onClick={saveTitle} aria-label={t("canvas.project.saveName")} />
+                            <Button type="text" size="small" shape="circle" icon={<Check className="size-4" />} onClick={() => void saveTitle()} aria-label={t("canvas.project.saveName")} />
                             <Button type="text" size="small" shape="circle" icon={<X className="size-4" />} onClick={stopEditing} aria-label={t("canvas.project.cancelRename")} />
                         </>
                     ) : (

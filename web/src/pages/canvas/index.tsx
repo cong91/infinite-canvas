@@ -14,6 +14,9 @@ import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useCanvasUiStore } from "@/stores/canvas/use-canvas-ui-store";
 import { exportCanvasProjects } from "@/lib/canvas/canvas-export";
 import { hasAgentUrlBootstrap } from "@/lib/agent/agent-url-bootstrap";
+import { canvasBff } from "@/services/api/canvas-bff";
+import { fromBffCanvasProject, toBffCanvasProject } from "@/services/api/canvas-workspace";
+import { useCanvasAccountStore } from "@/stores/use-canvas-account-store";
 
 export default function CanvasPage() {
     const { message } = App.useApp();
@@ -25,9 +28,11 @@ export default function CanvasPage() {
     const hydrated = useCanvasStore((state) => state.hydrated);
     const projects = useCanvasStore((state) => state.projects);
     const createProject = useCanvasStore((state) => state.createProject);
+    const replaceProjects = useCanvasStore((state) => state.replaceProjects);
     const importProject = useCanvasStore((state) => state.importProject);
     const selectedIds = useCanvasUiStore((state) => state.selectedProjectIds);
     const setDeleteIds = useCanvasUiStore((state) => state.setDeleteProjectIds);
+    const accountStatus = useCanvasAccountStore((state) => state.status);
 
     const mode = searchParams.get("mode");
     const agentMode = mode === "new" || mode === "recent" || mode === "choose";
@@ -36,7 +41,24 @@ export default function CanvasPage() {
         const agentHash = hasAgentUrlBootstrap(window.location.hash) ? window.location.hash : "";
         navigate(`/canvas/${id}${agentQuery}${agentHash}`, { replace: Boolean(agentHash) });
     };
-    const createAndEnter = () => enterProject(createProject(t("canvas.defaultTitle", { count: projects.length + 1 })));
+    const createAndEnter = async () => {
+        const title = t("canvas.defaultTitle", { count: projects.length + 1 });
+        if (accountStatus !== "authenticated") {
+            enterProject(createProject(title));
+            return;
+        }
+        const localId = createProject(title);
+        const localProject = useCanvasStore.getState().projects.find((project) => project.id === localId);
+        if (!localProject) return;
+        try {
+            const remoteProject = await canvasBff.createProject(toBffCanvasProject(localProject));
+            replaceProjects([fromBffCanvasProject(remoteProject), ...useCanvasStore.getState().projects.filter((project) => project.id !== localId)]);
+            enterProject(remoteProject.id);
+        } catch (error) {
+            useCanvasStore.getState().deleteProjects([localId]);
+            message.error(error instanceof Error ? error.message : t("canvas.createFailed", { defaultValue: "Canvas creation failed" }));
+        }
+    };
     const importCanvas = async (file?: File) => {
         if (!file) return;
         try {
@@ -64,10 +86,22 @@ export default function CanvasPage() {
     };
 
     useEffect(() => {
-        if (!hydrated || autoOpenRef.current || (mode !== "new" && mode !== "recent")) return;
+        if (!hydrated || autoOpenRef.current || (mode !== "new" && mode !== "recent") || accountStatus === "unknown" || accountStatus === "loading") return;
         autoOpenRef.current = true;
-        enterProject(mode === "new" ? createProject(t("canvas.defaultTitle", { count: projects.length + 1 })) : projects[0]?.id || createProject(t("canvas.defaultTitle", { count: projects.length + 1 })));
-    }, [createProject, hydrated, mode, projects, t]);
+        if (mode === "new") {
+            void createAndEnter();
+            return;
+        }
+        if (projects[0]) {
+            enterProject(projects[0].id);
+            return;
+        }
+        if (accountStatus === "authenticated") {
+            void createAndEnter();
+            return;
+        }
+        enterProject(createProject(t("canvas.defaultTitle", { count: projects.length + 1 })));
+    }, [accountStatus, createAndEnter, createProject, hydrated, mode, projects, t]);
 
     if (hydrated && (mode === "new" || mode === "recent")) return <main className="flex h-full items-center justify-center bg-background text-sm text-stone-500">{t("canvas.opening")}</main>;
 
@@ -82,7 +116,16 @@ export default function CanvasPage() {
                     <div className="flex items-center gap-2">
                         {selectedIds.length ? (
                             <>
-                                <Button disabled={!hydrated} icon={<Download className="size-4" />} onClick={() => void exportCanvasProjects(projects.filter((project) => selectedIds.includes(project.id)), `${t("canvas.title")}-${selectedIds.length}`)}>
+                                <Button
+                                    disabled={!hydrated}
+                                    icon={<Download className="size-4" />}
+                                    onClick={() =>
+                                        void exportCanvasProjects(
+                                            projects.filter((project) => selectedIds.includes(project.id)),
+                                            `${t("canvas.title")}-${selectedIds.length}`,
+                                        )
+                                    }
+                                >
                                     {t("canvas.exportSelected")}
                                 </Button>
                                 <Button disabled={!hydrated} onClick={() => setDeleteIds(selectedIds)}>
@@ -98,7 +141,7 @@ export default function CanvasPage() {
                         <Button disabled={!hydrated} icon={<FileUp className="size-4" />} onClick={() => inputRef.current?.click()}>
                             {t("canvas.import")}
                         </Button>
-                        <Button disabled={!hydrated} type="primary" icon={<Plus className="size-4" />} onClick={createAndEnter}>
+                        <Button disabled={!hydrated || accountStatus === "loading"} type="primary" icon={<Plus className="size-4" />} onClick={() => void createAndEnter()}>
                             {t("canvas.create")}
                         </Button>
                     </div>
@@ -116,7 +159,7 @@ export default function CanvasPage() {
                     <section className="flex min-h-[360px] flex-col items-center justify-center border-y border-stone-200 text-center dark:border-stone-800">
                         <h2 className="text-xl font-medium">{t("canvas.empty")}</h2>
                         <p className="mt-3 text-sm text-stone-500">{t("canvas.emptyDescription")}</p>
-                        <Button type="primary" className="mt-6" icon={<Plus className="size-4" />} onClick={createAndEnter}>
+                        <Button disabled={accountStatus === "loading"} type="primary" className="mt-6" icon={<Plus className="size-4" />} onClick={() => void createAndEnter()}>
                             {t("canvas.create")}
                         </Button>
                     </section>

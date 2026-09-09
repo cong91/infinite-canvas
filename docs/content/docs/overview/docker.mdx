@@ -21,6 +21,29 @@ Open `http://localhost:3000`.
 docker compose -f docker-compose.local.yml up -d --build
 ```
 
+To test the Canvas BFF infrastructure separately, start the isolated PostgreSQL and MinIO stack:
+
+```bash
+docker compose -f docker-compose.bff.local.yml -p infinite-canvas-bff up -d --build
+powershell -ExecutionPolicy Bypass -File scripts/smoke-bff-stack.ps1
+```
+
+This provisions PostgreSQL 16, runs the checked-in BFF migrations, creates the `canvas-media` bucket in MinIO, and starts the persistent BFF on `http://localhost:17372`. The BFF uses PostgreSQL for account/workspace records and MinIO for media in non-test environments. Run `npm run test:integration` in `canvas-bff` with the stack connection variables to verify durable writes and signed media reads. Stop it with `docker compose -f docker-compose.bff.local.yml -p infinite-canvas-bff down`; add `-v` only when intentionally deleting test data.
+
+## OVH production stack
+
+The repository includes a production Compose stack and an SSH deployment workflow for `ovh-sing`. The stack keeps the frontend, BFF, PostgreSQL, and MinIO ports on loopback; host Nginx exposes `https://canvas.v-claw.org` for the iframe application and `https://media.canvas.v-claw.org` for signed MinIO reads. The media host preserves the S3 request path required by the signature, permits only `GET`/`HEAD`, and returns CORS headers only for the Canvas origin.
+
+Create `/srv/infinite-canvas/.env.production` on the server from `deploy/ovh-sing/env.production.example`, use mode `600`, and set the same `SUB2API_CANVAS_BFF_SECRET` in Sub2API. Create DNS records for both `canvas.v-claw.org` and `media.canvas.v-claw.org`; the deploy script issues one certificate containing both names on the first run. Configure these GitHub Actions secrets for automatic deployment on pushes to `main`: `OVH_SSH_HOST`, `OVH_SSH_USER`, `OVH_SSH_PRIVATE_KEY`, and `OVH_SSH_KNOWN_HOSTS`.
+
+Run the stack manually on the server with:
+
+```bash
+DEPLOY_SHA=manual bash deploy/ovh-sing/deploy.sh
+```
+
+The script validates production secrets, DNS, TLS, Compose configuration, database migration, BFF readiness, and same-origin HTTPS health before reporting success. It intentionally stops before changing traffic when any prerequisite is missing.
+
 ## Documentation image
 
 The documentation in `docs/` is a separate Next.js standalone application with server capabilities.

@@ -62,6 +62,7 @@ See [Third-party Prompt Sources](/docs/overview/third-party-prompt-repositories)
 
 ## Current limitations
 
-- The project is frontend-first and does not provide built-in cloud accounts or cloud storage.
-- API keys remain in browser storage and requests are sent directly to configured providers.
+- The Canvas BFF now provides the account/session/provider/project/asset/generation contract and Sub2API SSO handoff; the Canvas library and project page hydrate, create, rename, delete and autosave projects through the account session, while authenticated image/video/audio/text requests use the server-side provider adapter and durable media assets hydrate from signed BFF URLs. Browser acceptance against a real Sub2API/provider remains pending.
+- The BFF uses PostgreSQL repositories and S3-compatible object storage in non-test environments; in-memory adapters are retained only for contract tests. Generated media is stored durably and exposed to the authenticated Canvas through short-lived signed URLs.
+- Unauthenticated use continues to keep its legacy API keys and browser data locally. Once a Canvas account session is active, the BFF is the source of truth for account projects, providers, generated media and generation records; localforage/WebDAV remain cache/export mechanisms.
 - Production Docker static-resource paths still require broader deployment verification.

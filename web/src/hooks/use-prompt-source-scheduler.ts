@@ -22,11 +22,7 @@ export function usePromptSourceScheduler() {
                 const result = await refreshDueSources(intervalMinutes * 60_000);
                 if (!result.results.length) return;
                 updateSchedule("lastFetchedAt", new Date().toISOString());
-                await Promise.all([
-                    queryClient.invalidateQueries({ queryKey: ["prompts"] }),
-                    queryClient.invalidateQueries({ queryKey: ["side-panel-prompts"] }),
-                    queryClient.invalidateQueries({ queryKey: ["prompt-source-statuses"] }),
-                ]);
+                await Promise.all([queryClient.invalidateQueries({ queryKey: ["prompts"] }), queryClient.invalidateQueries({ queryKey: ["side-panel-prompts"] }), queryClient.invalidateQueries({ queryKey: ["prompt-source-statuses"] })]);
             } catch {
                 // Per-source errors are stored in source state and retried during the next check cycle.
             } finally {
