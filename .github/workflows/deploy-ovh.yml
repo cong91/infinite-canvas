@@ -49,7 +49,7 @@ jobs:
             --exclude='**/dist' \
             --exclude='web/public/plugins' \
             --exclude='docs/.next' \
-            -czf - . | ssh "$OVH_SSH_USER@$OVH_SSH_HOST" 'mkdir -p /srv/infinite-canvas && tar -xzf - -C /srv/infinite-canvas'
+            -czf - . | ssh "$OVH_SSH_USER@$OVH_SSH_HOST" 'sudo install -d -m 755 /srv/infinite-canvas && sudo tar -xzf - -C /srv/infinite-canvas'
 
       - name: Build and deploy Docker stack
         env:
@@ -57,4 +57,4 @@ jobs:
           OVH_SSH_USER: ${{ secrets.OVH_SSH_USER }}
           DEPLOY_SHA: ${{ github.sha }}
         run: |
-          ssh "$OVH_SSH_USER@$OVH_SSH_HOST" "cd /srv/infinite-canvas && DEPLOY_SHA='$DEPLOY_SHA' bash deploy/ovh-sing/deploy.sh"
+          ssh "$OVH_SSH_USER@$OVH_SSH_HOST" "cd /srv/infinite-canvas && sudo -n env DEPLOY_SHA='$DEPLOY_SHA' bash deploy/ovh-sing/deploy.sh"
