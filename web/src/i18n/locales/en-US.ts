@@ -3,6 +3,16 @@ export default {
         title: "Infinite Canvas",
         description: "An infinite canvas creation tool",
     },
+    auth: {
+        login: {
+            title: "Sign in to continue",
+            description: "Canvas needs a valid Sub2API session before it can open the dashboard and model providers.",
+            openSub2Api: "Open Sub2API sign-in",
+            retry: "Check session again",
+            loading: "Checking sign-in session…",
+            hint: "After signing in, open Infinite Canvas again from the Sub2API custom menu to finish SSO.",
+        },
+    },
     theme: { toggle: "Toggle theme" },
     common: {
         cancel: "Cancel",
@@ -145,6 +155,7 @@ export default {
         maskModelUnsupported: "This model does not support mask editing. Use another provider.",
         noContent: "No content returned",
         modelReadFailed: "Failed to load models",
+        modelNetworkFailed: "Cannot connect to {{endpoint}}. The endpoint may block CORS; enable the local proxy or use an endpoint that allows browser requests.",
         videoTimeout: "{{provider}}video generation timed out. Try again later.",
         pluginVideoExpired: "The plugin video task has expired. Generate it again.",
         scriptNoVideo: "The model request script did not return a video",

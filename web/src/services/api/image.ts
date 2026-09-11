@@ -279,10 +279,12 @@ function readApiErrorMessage(value: unknown): string {
     return readApiErrorMessage(payload.msg) || readApiErrorMessage(payload.message) || readApiErrorMessage(errorMsg) || readApiErrorMessage(payload.detail) || "";
 }
 
-function readAxiosError(error: unknown, fallback: string) {
+function readAxiosError(error: unknown, fallback: string, context?: { modelList?: boolean; endpoint?: string }) {
     if (axios.isCancel(error)) return apiText("requestCanceled");
     if (axios.isAxiosError(error)) {
-        if (!error.response && error.code === "ERR_NETWORK") return apiText("requestFailed");
+        if (!error.response && (error.code === "ERR_NETWORK" || error.message === "Network Error")) {
+            return context?.modelList ? apiText("modelNetworkFailed", { endpoint: context.endpoint || "" }) : apiText("requestFailed");
+        }
         const responseData = error.response?.data;
         // Prefer the API error from the response body.
         const apiMsg = readApiErrorMessage(responseData);
@@ -885,7 +887,7 @@ export async function fetchImageModels(config: Pick<AiConfig, "baseUrl" | "apiKe
             .filter((id): id is string => Boolean(id))
             .sort((a, b) => a.localeCompare(b));
     } catch (error) {
-        throw new Error(readAxiosError(error, apiText("modelReadFailed")));
+        throw new Error(readAxiosError(error, apiText("modelReadFailed"), { modelList: true, endpoint: buildApiUrl(config.baseUrl, "/models") }));
     }
 }
 
