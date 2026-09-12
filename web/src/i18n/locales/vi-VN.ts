@@ -3,6 +3,16 @@ export default {
         title: "Infinite Canvas",
         description: "Công cụ sáng tạo trên canvas vô hạn",
     },
+    auth: {
+        login: {
+            title: "Đăng nhập để tiếp tục",
+            description: "Canvas cần phiên đăng nhập Sub2API hợp lệ trước khi mở dashboard và nhà cung cấp model.",
+            openSub2Api: "Mở trang đăng nhập Sub2API",
+            retry: "Kiểm tra lại phiên",
+            loading: "Đang kiểm tra phiên đăng nhập…",
+            hint: "Sau khi đăng nhập, hãy mở lại Infinite Canvas từ menu tùy chỉnh của Sub2API để hoàn tất SSO.",
+        },
+    },
     theme: {
         toggle: "Đổi giao diện",
     },
@@ -196,6 +206,7 @@ export default {
         maskModelUnsupported: "Model này không hỗ trợ chỉnh sửa mask. Hãy dùng nhà cung cấp khác.",
         noContent: "Không có nội dung trả về",
         modelReadFailed: "Không thể tải danh sách model",
+        modelNetworkFailed: "Không thể kết nối tới {{endpoint}}. Endpoint có thể đang chặn CORS; hãy bật proxy cục bộ hoặc dùng endpoint cho phép truy cập từ trình duyệt.",
         videoTimeout: "Tạo video với {{provider}} quá thời gian. Hãy thử lại sau.",
         pluginVideoExpired: "Tác vụ video của plugin đã hết hạn. Hãy tạo lại.",
         scriptNoVideo: "Request script của model không trả về video",

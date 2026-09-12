@@ -8,6 +8,7 @@ import zhCN from "@/i18n/locales/zh-CN";
 export type AppLocale = "zh-CN" | "vi-VN" | "en-US";
 
 const LOCALE_STORAGE_KEY = "infinite-canvas:locale";
+const DEFAULT_LOCALE: AppLocale = "vi-VN";
 
 i18n.use(initReactI18next).init({
     resources: {
@@ -15,8 +16,8 @@ i18n.use(initReactI18next).init({
         "vi-VN": { translation: viVN },
         "en-US": { translation: enUS },
     },
-    lng: (localStorage.getItem(LOCALE_STORAGE_KEY) as AppLocale) || "zh-CN",
-    fallbackLng: "zh-CN",
+    lng: (localStorage.getItem(LOCALE_STORAGE_KEY) as AppLocale) || DEFAULT_LOCALE,
+    fallbackLng: DEFAULT_LOCALE,
     supportedLngs: ["zh-CN", "vi-VN", "en-US"],
     initAsync: false,
     interpolation: { escapeValue: false },

@@ -11,4 +11,5 @@ interface ImportMetaEnv {
     // Baidu Analytics site ID
     readonly VITE_ANALYTICS_BAIDU_ID?: string;
     readonly VITE_CANVAS_BFF_URL?: string;
+    readonly VITE_SUB2API_URL?: string;
 }
