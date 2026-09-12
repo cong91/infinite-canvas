@@ -3,6 +3,16 @@ export default {
         title: "无限画布",
         description: "一个无限画布创作工具",
     },
+    auth: {
+        login: {
+            title: "登录后继续",
+            description: "Canvas 需要有效的 Sub2API 会话才能打开仪表盘和模型提供商。",
+            openSub2Api: "打开 Sub2API 登录页",
+            retry: "重新检查会话",
+            loading: "正在检查登录会话…",
+            hint: "登录后，请从 Sub2API 自定义菜单重新打开 Infinite Canvas 以完成 SSO。",
+        },
+    },
     theme: { toggle: "切换主题" },
     common: {
         cancel: "取消",
@@ -139,6 +149,7 @@ export default {
         maskModelUnsupported: "蒙版编辑暂不支持该模型，请使用其他渠道",
         noContent: "没有返回内容",
         modelReadFailed: "读取模型失败",
+        modelNetworkFailed: "无法连接到 {{endpoint}}。该端点可能阻止了 CORS 请求，请启用本地代理或使用允许浏览器请求的端点。",
         videoTimeout: "{{provider}}视频生成超时，请稍后重试",
         pluginVideoExpired: "插件视频任务已失效，请重新生成",
         scriptNoVideo: "模型调用脚本没有返回视频",

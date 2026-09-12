@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- [修复] 未登录时先显示 Sub2API 登录页面，避免直接进入 Canvas dashboard；模型列表网络/CORS 错误现在会显示具体 endpoint 和处理建议。
+
 - [调整] 将 Canvas BFF 后端统一迁移到 NestJS 模块化运行时，保留 PostgreSQL、MinIO、SSO 和生成 worker 合约。
 - [新增] Canvas BFF 支持按总媒体字节数执行逻辑保留策略，超出上限时按最旧优先删除 MinIO 对象及对应素材记录。
 - [调整] 隐藏前端指向项目上游的 GitHub 入口与发布版本信息，保留其他 GitHub 集成和模块信息。
