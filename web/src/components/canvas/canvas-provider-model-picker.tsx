@@ -15,16 +15,16 @@ export function CanvasProviderModelPicker({ capability, value, onChange, classNa
             loadStartedRef.current = false;
         });
     }, [load]);
-    const options = useMemo(() => providers.flatMap((provider) => (modelsByProvider[provider.id] || []).filter((model) => guessCapability(model) === capability).map((model) => ({ provider, model }))), [capability, modelsByProvider, providers]);
+    const options = useMemo(() => providers.flatMap((provider) => {
+        const models = modelsByProvider[provider.id] || (provider.model ? [provider.model] : []);
+        return models.filter((model) => guessCapability(model) === capability).map((model) => ({ provider, model }));
+    }), [capability, modelsByProvider, providers]);
+    const compatibleProviders = useMemo(() => providers.filter((provider) => options.some((option) => option.provider.id === provider.id)), [options, providers]);
     const modelName = modelOptionName(value || "");
     const current = options.find((option) => encodeCanvasModel(option.provider.id, option.model) === value)
         || options.find((option) => option.provider.id === selectedProviderId && option.model === modelName)
-        || options.find((option) => option.provider.model === modelName)
-        || options.find((option) => option.model === modelName);
+        || options.find((option) => option.provider.model === modelName);
     const selectedValue = current ? encodeCanvasModel(current.provider.id, current.model) : value || "";
-    useEffect(() => {
-        if (current && selectedValue !== value) onChange(selectedValue);
-    }, [current, onChange, selectedValue, value]);
     return (
         <div data-capability={capability} className={`grid min-w-0 gap-2 sm:grid-cols-2 ${className || ""}`}>
             <Select value={current?.provider.id || ""} onValueChange={(providerId) => {
@@ -32,7 +32,7 @@ export function CanvasProviderModelPicker({ capability, value, onChange, classNa
                 if (option) onChange(encodeCanvasModel(option.provider.id, option.model));
             }}>
                 <SelectTrigger className="h-8 min-w-0 w-full"><span className="truncate">{current?.provider.name || "Chọn nhà cung cấp"}</span></SelectTrigger>
-                <SelectContent>{providers.map((provider) => <SelectItem key={provider.id} value={provider.id}>{provider.name}</SelectItem>)}</SelectContent>
+                <SelectContent>{compatibleProviders.map((provider) => <SelectItem key={provider.id} value={provider.id}>{provider.name}</SelectItem>)}</SelectContent>
             </Select>
             <Select value={selectedValue} disabled={loading || !current} onValueChange={onChange}>
                 <SelectTrigger className="h-8 min-w-0 w-full"><span className="truncate">{current?.model || "Chọn model"}</span></SelectTrigger>

@@ -25,8 +25,13 @@ export async function submitCanvasGeneration(kind: CanvasGeneration["kind"], con
     const configuredModel = modelOptionName(selectedValue);
     const explicitModel = decodeCanvasModel(selectedValue) || decodeCanvasModel(config.model || "");
     const selectedProviderId = explicitModel?.providerId;
-    const providerId = selectedProviderId || useCanvasProviderStore.getState().selectedProviderId;
-    const provider = providers.find((item) => item.status === "active" && item.id === providerId) || providers.find((item) => item.status === "active");
+    const activeProviders = providers.filter((item) => item.status === "active");
+    const preferredProviderId = useCanvasProviderStore.getState().selectedProviderId;
+    const provider = selectedProviderId
+        ? activeProviders.find((item) => item.id === selectedProviderId)
+        : activeProviders.find((item) => item.id === preferredProviderId && item.model === configuredModel)
+            || activeProviders.find((item) => item.model === configuredModel)
+            || (activeProviders.length === 1 ? activeProviders[0] : undefined);
     if (!provider) throw new Error("No active Canvas provider is configured");
     const project = projects[0] || (await canvasBff.createProject({ name: "Canvas Workbench", data: { source: "workbench" } }));
     return canvasBff.createGeneration({
