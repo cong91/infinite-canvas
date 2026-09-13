@@ -388,9 +388,29 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                                                     {t("config.account.saveProvider", { defaultValue: "Save provider" })}
                                                 </Button>
                                             </div>
-                                            <div className="mt-4 grid gap-3 md:grid-cols-2">
-                                                <Form.Item label="Model image mặc định" className="mb-0"><CanvasProviderModelPicker capability="image" value={config.imageModel} onChange={(model) => updateConfig("imageModel", model)} /></Form.Item>
-                                                <Form.Item label="Model video mặc định" className="mb-0"><CanvasProviderModelPicker capability="video" value={config.videoModel} onChange={(model) => updateConfig("videoModel", model)} /></Form.Item>
+                                            <div className="mt-5 border-t border-stone-200 pt-4 dark:border-stone-800">
+                                                <div>
+                                                    <div className="text-sm font-semibold">{t("config.account.studioDefaultsTitle", { defaultValue: "Studio defaults" })}</div>
+                                                    <div className="mt-1 text-xs text-stone-500">
+                                                        {t("config.account.studioDefaultsDescription", { defaultValue: "These choices are applied when a Studio opens for the first time. You can change the provider or model at any time inside Studio." })}
+                                                    </div>
+                                                </div>
+                                                <div className="mt-3 divide-y divide-stone-200 dark:divide-stone-800">
+                                                    <div className="grid gap-3 py-3 first:pt-0 md:grid-cols-[minmax(9rem,0.55fr)_minmax(0,1.45fr)] md:items-center">
+                                                        <div>
+                                                            <div className="text-sm font-medium">{t("config.account.studioImageLabel", { defaultValue: "Image Studio" })}</div>
+                                                            <div className="mt-1 text-xs text-stone-500">{t("config.account.studioImageDescription", { defaultValue: "Provider and model used for image generation." })}</div>
+                                                        </div>
+                                                        <CanvasProviderModelPicker capability="image" value={config.imageModel} showLabels onChange={(model) => updateConfig("imageModel", model)} />
+                                                    </div>
+                                                    <div className="grid gap-3 py-3 last:pb-0 md:grid-cols-[minmax(9rem,0.55fr)_minmax(0,1.45fr)] md:items-center">
+                                                        <div>
+                                                            <div className="text-sm font-medium">{t("config.account.studioVideoLabel", { defaultValue: "Video Studio" })}</div>
+                                                            <div className="mt-1 text-xs text-stone-500">{t("config.account.studioVideoDescription", { defaultValue: "Provider and model used for video generation." })}</div>
+                                                        </div>
+                                                        <CanvasProviderModelPicker capability="video" value={config.videoModel} showLabels onChange={(model) => updateConfig("videoModel", model)} />
+                                                    </div>
+                                                </div>
                                             </div>
                                         </>
                                     ) : null}
