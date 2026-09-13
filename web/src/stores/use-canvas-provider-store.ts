@@ -2,7 +2,7 @@ import { create } from "zustand";
 
 import { CanvasBffError, canvasBff, type CanvasProvider, type ProviderCatalog } from "@/services/api/canvas-bff";
 
-type ProviderInput = { name: string; providerType?: string; model?: string; group?: string; channel?: string; catalogKeyId?: string; secret?: string };
+type ProviderInput = { name: string; providerType?: string; baseUrl?: string; model?: string; group?: string; channel?: string; catalogKeyId?: string; secret?: string };
 type ProviderPatch = { name?: string; model?: string; group?: string; channel?: string; status?: "active" | "disabled" };
 
 type CanvasProviderStore = {
