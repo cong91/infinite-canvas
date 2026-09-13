@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 
 import { encodeCanvasModel } from "@/services/api/canvas-bff";
-import { modelOptionName, type ModelCapability } from "@/stores/use-config-store";
+import { guessCapability, modelOptionName, type ModelCapability } from "@/stores/use-config-store";
 import { useCanvasBffModelOptions } from "@/hooks/use-canvas-bff-model-options";
 
 export function CanvasProviderModelPicker({ capability, value, onChange, className }: { capability: ModelCapability; value?: string; onChange: (value: string) => void; className?: string }) {
@@ -15,9 +15,16 @@ export function CanvasProviderModelPicker({ capability, value, onChange, classNa
             loadStartedRef.current = false;
         });
     }, [load]);
-    const options = useMemo(() => providers.flatMap((provider) => (modelsByProvider[provider.id] || []).map((model) => ({ provider, model }))), [modelsByProvider, providers]);
-    const current = options.find((option) => encodeCanvasModel(option.provider.id, option.model) === value) || options.find((option) => option.provider.id === selectedProviderId && option.model === modelOptionName(value || "")) || options.find((option) => option.model === modelOptionName(value || ""));
+    const options = useMemo(() => providers.flatMap((provider) => (modelsByProvider[provider.id] || []).filter((model) => guessCapability(model) === capability).map((model) => ({ provider, model }))), [capability, modelsByProvider, providers]);
+    const modelName = modelOptionName(value || "");
+    const current = options.find((option) => encodeCanvasModel(option.provider.id, option.model) === value)
+        || options.find((option) => option.provider.id === selectedProviderId && option.model === modelName)
+        || options.find((option) => option.provider.model === modelName)
+        || options.find((option) => option.model === modelName);
     const selectedValue = current ? encodeCanvasModel(current.provider.id, current.model) : value || "";
+    useEffect(() => {
+        if (current && selectedValue !== value) onChange(selectedValue);
+    }, [current, onChange, selectedValue, value]);
     return (
         <div data-capability={capability} className={`grid min-w-0 gap-2 sm:grid-cols-2 ${className || ""}`}>
             <Select value={current?.provider.id || ""} onValueChange={(providerId) => {
