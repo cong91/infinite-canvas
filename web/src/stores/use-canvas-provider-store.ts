@@ -11,8 +11,11 @@ type CanvasProviderStore = {
     catalog: ProviderCatalog | null;
     status: "idle" | "loading" | "ready" | "error";
     error: string | null;
+    modelsByProvider: Record<string, string[]>;
+    modelsLoadingProviderId: string | null;
     load: () => Promise<void>;
     loadCatalog: () => Promise<void>;
+    loadModels: (providerId: string) => Promise<string[]>;
     create: (input: ProviderInput) => Promise<CanvasProvider>;
     update: (providerId: string, input: ProviderPatch) => Promise<CanvasProvider>;
     remove: (providerId: string) => Promise<void>;
@@ -26,6 +29,8 @@ export const useCanvasProviderStore = create<CanvasProviderStore>()((set) => ({
     catalog: null,
     status: "idle",
     error: null,
+    modelsByProvider: {},
+    modelsLoadingProviderId: null,
     load: async () => {
         set({ status: "loading", error: null });
         try {
@@ -50,6 +55,17 @@ export const useCanvasProviderStore = create<CanvasProviderStore>()((set) => ({
             set({ status: "error", error: message });
         }
     },
+    loadModels: async (providerId) => {
+        set({ modelsLoadingProviderId: providerId, error: null });
+        try {
+            const models = await canvasBff.listProviderModels(providerId);
+            set((state) => ({ modelsByProvider: { ...state.modelsByProvider, [providerId]: models }, modelsLoadingProviderId: state.modelsLoadingProviderId === providerId ? null : state.modelsLoadingProviderId }));
+            return models;
+        } catch (error) {
+            set((state) => ({ modelsLoadingProviderId: state.modelsLoadingProviderId === providerId ? null : state.modelsLoadingProviderId, error: error instanceof Error ? error.message : "Provider model list could not be loaded" }));
+            throw error;
+        }
+    },
     create: async (input) => {
         const provider = await canvasBff.createProvider(input);
         set((state) => ({ providers: [...state.providers.filter((item) => item.id !== provider.id), provider], selectedProviderId: state.selectedProviderId || provider.id, error: null }));
@@ -65,5 +81,5 @@ export const useCanvasProviderStore = create<CanvasProviderStore>()((set) => ({
         set((state) => ({ providers: state.providers.filter((item) => item.id !== providerId), selectedProviderId: state.selectedProviderId === providerId ? null : state.selectedProviderId, error: null }));
     },
     select: (providerId) => set((state) => ({ selectedProviderId: state.providers.some((item) => item.id === providerId && item.status === "active") ? providerId : state.selectedProviderId })),
-    clear: () => set({ providers: [], selectedProviderId: null, catalog: null, status: "idle", error: null }),
+    clear: () => set({ providers: [], selectedProviderId: null, catalog: null, modelsByProvider: {}, modelsLoadingProviderId: null, status: "idle", error: null }),
 }));

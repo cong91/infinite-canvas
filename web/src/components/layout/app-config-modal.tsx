@@ -86,10 +86,14 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
     const canvasProviderStatus = useCanvasProviderStore((state) => state.status);
     const canvasProviderError = useCanvasProviderStore((state) => state.error);
     const selectedCanvasProviderId = useCanvasProviderStore((state) => state.selectedProviderId);
+    const canvasProviderModels = useCanvasProviderStore((state) => state.modelsByProvider);
+    const modelsLoadingProviderId = useCanvasProviderStore((state) => state.modelsLoadingProviderId);
     const selectCanvasProvider = useCanvasProviderStore((state) => state.select);
     const loadCanvasProviders = useCanvasProviderStore((state) => state.load);
     const loadCanvasCatalog = useCanvasProviderStore((state) => state.loadCatalog);
+    const loadCanvasModels = useCanvasProviderStore((state) => state.loadModels);
     const createCanvasProvider = useCanvasProviderStore((state) => state.create);
+    const updateCanvasProvider = useCanvasProviderStore((state) => state.update);
     const [selectedCatalogKeyId, setSelectedCatalogKeyId] = useState("");
     const [canvasProviderName, setCanvasProviderName] = useState("");
     const [savingCanvasProvider, setSavingCanvasProvider] = useState(false);
@@ -101,6 +105,11 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
         void loadCanvasProviders();
         void loadCanvasCatalog();
     }, [activeTab, canvasAccountStatus, loadCanvasCatalog, loadCanvasProviders]);
+
+    useEffect(() => {
+        if (canvasAccountStatus !== "authenticated" || !selectedCanvasProviderId || canvasProviderModels[selectedCanvasProviderId]) return;
+        void loadCanvasModels(selectedCanvasProviderId).catch(() => undefined);
+    }, [canvasAccountStatus, canvasProviderModels, loadCanvasModels, selectedCanvasProviderId]);
 
     const saveConfig = (nextConfig: AiConfig) => {
         (Object.keys(nextConfig) as Array<keyof AiConfig>).forEach((key) => updateConfig(key, nextConfig[key]));
@@ -132,7 +141,7 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
         if (!catalogKey) return;
         setSavingCanvasProvider(true);
         try {
-            await createCanvasProvider({
+            const provider = await createCanvasProvider({
                 name: canvasProviderName.trim() || catalogKey.name,
                 catalogKeyId: catalogKey.id,
                 providerType: catalogKey.providerType,
@@ -140,6 +149,8 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                 group: catalogKey.group,
                 channel: catalogKey.channel,
             });
+            const models = await loadCanvasModels(provider.id);
+            if (!provider.model && models[0]) await updateCanvasProvider(provider.id, { model: models[0] });
             setSelectedCatalogKeyId("");
             setCanvasProviderName("");
             message.success(t("config.account.providerSaved", { defaultValue: "Provider saved" }));
@@ -147,6 +158,14 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
             message.error(error instanceof Error ? error.message : t("config.account.providerSaveFailed", { defaultValue: "Provider could not be saved" }));
         } finally {
             setSavingCanvasProvider(false);
+        }
+    };
+
+    const saveCanvasProviderModel = async (providerId: string, model: string) => {
+        try {
+            await updateCanvasProvider(providerId, { model });
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : "Không thể lưu model nhà cung cấp");
         }
     };
 
@@ -293,19 +312,42 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                                             <div className="mt-3 text-xs font-medium text-stone-600 dark:text-stone-300">{t("config.account.savedProviders", { defaultValue: "Canvas providers" })}</div>
                                             {canvasProviders.length ? (
                                                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                                                    {canvasProviders.map((provider) => (
-                                                        <button
-                                                            type="button"
-                                                            key={provider.id}
-                                                            onClick={() => selectCanvasProvider(provider.id)}
-                                                            className={`w-full rounded-md border px-3 py-2 text-left transition-colors ${selectedCanvasProviderId === provider.id ? "border-primary bg-primary/5" : "border-stone-200 dark:border-stone-800"}`}
-                                                        >
-                                                            <div className="truncate text-sm font-medium">{provider.name}</div>
-                                                            <div className="mt-1 text-xs text-stone-500">
-                                                                {provider.maskedKey} · {provider.providerType}
+                                                    {canvasProviders.map((provider) => {
+                                                        const models = canvasProviderModels[provider.id] || [];
+                                                        return (
+                                                            <div
+                                                                key={provider.id}
+                                                                role="button"
+                                                                tabIndex={0}
+                                                                onClick={() => selectCanvasProvider(provider.id)}
+                                                                onKeyDown={(event) => {
+                                                                    if (event.key === "Enter" || event.key === " ") {
+                                                                        event.preventDefault();
+                                                                        selectCanvasProvider(provider.id);
+                                                                    }
+                                                                }}
+                                                                className={`rounded-md border px-3 py-2 transition-colors ${selectedCanvasProviderId === provider.id ? "border-primary bg-primary/5" : "border-stone-200 dark:border-stone-800"}`}
+                                                            >
+                                                                <div className="truncate text-sm font-medium">{provider.name}</div>
+                                                                <div className="mt-1 text-xs text-stone-500">
+                                                                    {provider.maskedKey} · {provider.providerType}
+                                                                </div>
+                                                                <Select
+                                                                    className="mt-2 w-full"
+                                                                    size="small"
+                                                                    value={provider.model || undefined}
+                                                                    placeholder="Chọn model"
+                                                                    loading={modelsLoadingProviderId === provider.id}
+                                                                    options={models.map((model) => ({ value: model, label: model }))}
+                                                                    onDropdownVisibleChange={(open) => {
+                                                                        if (open && !canvasProviderModels[provider.id]) void loadCanvasModels(provider.id).catch(() => undefined);
+                                                                    }}
+                                                                    onChange={(model) => void saveCanvasProviderModel(provider.id, model)}
+                                                                    onClick={(event) => event.stopPropagation()}
+                                                                />
                                                             </div>
-                                                        </button>
-                                                    ))}
+                                                        );
+                                                    })}
                                                 </div>
                                             ) : (
                                                 <div className="mt-1 text-xs text-stone-500">{t("config.account.emptyProviders", { defaultValue: "No Canvas providers saved yet." })}</div>
@@ -332,13 +374,13 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                                         </>
                                     ) : null}
                                 </section>
-                                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                                {canvasAccountStatus !== "authenticated" ? <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                                     <div className="text-xs text-stone-500">{t("config.channels.description")}</div>
                                     <Button type="primary" icon={<Plus className="size-4" />} onClick={addChannel}>
                                         {t("config.channels.add")}
                                     </Button>
-                                </div>
-                                <div className="space-y-2">
+                                </div> : null}
+                                {canvasAccountStatus !== "authenticated" ? <div className="space-y-2">
                                     {config.channels.map((channel) => (
                                         <div key={channel.id} className="flex items-center justify-between gap-3 rounded-lg border border-stone-200 px-4 py-3 dark:border-stone-800">
                                             <div className="min-w-0">
@@ -355,7 +397,7 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                                             </div>
                                         </div>
                                     ))}
-                                </div>
+                                </div> : null}
                             </div>
                         ),
                     },
@@ -369,6 +411,7 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                         label: t("config.tabs.preferences"),
                         children: (
                             <Form layout="vertical" requiredMark={false}>
+                                {canvasAccountStatus !== "authenticated" ? <>
                                 <div className="mb-2 text-sm font-semibold">{t("config.preferences.defaultModels")}</div>
                                 <div className="mb-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                                     {modelGroups.map((group) => (
@@ -377,6 +420,7 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                                         </Form.Item>
                                     ))}
                                 </div>
+                                </> : null}
                                 <div className="mb-2 text-sm font-semibold">{t("config.preferences.generation")}</div>
                                 <div className="grid gap-4 md:grid-cols-4">
                                     <Form.Item label={t("config.preferences.canvasImageCount")} extra={t("config.preferences.canvasImageCountDescription")} className="mb-4">

@@ -28,7 +28,7 @@ export async function submitCanvasGeneration(kind: CanvasGeneration["kind"], con
         projectId: project.id,
         providerId: provider.id,
         kind,
-        input: { model: modelOptionName(config.model || (kind === "image" ? config.imageModel : kind === "video" ? config.videoModel : kind === "audio" ? config.audioModel : config.textModel)), prompt, ...extra },
+        input: { model: provider.model || modelOptionName(config.model || (kind === "image" ? config.imageModel : kind === "video" ? config.videoModel : kind === "audio" ? config.audioModel : config.textModel)), prompt, ...extra },
         clientRequestId: `canvas-${kind}-${nanoid()}`,
     });
 }

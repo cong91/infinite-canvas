@@ -18,6 +18,8 @@ export class ProvidersController {
     async list(@CurrentAccount() account: CanvasAccount, @RequestId() requestId: string) { return { data: await this.providers.list(account.id), requestId }; }
     @Get(":providerId")
     async get(@CurrentAccount() account: CanvasAccount, @Param("providerId") id: string, @RequestId() requestId: string) { return { data: await this.providers.get(account.id, id), requestId }; }
+    @Get(":providerId/models")
+    async models(@CurrentAccount() account: CanvasAccount, @Param("providerId") id: string, @RequestId() requestId: string) { return { data: await this.providers.models(account.id, id), requestId }; }
     @Post()
     async create(@CurrentAccount() account: CanvasAccount, @CanvasSessionToken() sessionToken: string | undefined, @Body(new ZodValidationPipe(providerBody)) body: z.output<typeof providerBody>, @RequestId() requestId: string) { return { data: await this.providers.create(account.id, sessionToken, body), requestId }; }
     @Patch(":providerId")

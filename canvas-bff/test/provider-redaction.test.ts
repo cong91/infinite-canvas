@@ -40,3 +40,12 @@ test("catalog adapter allowlists paths and redacts Sub2Api key values", async ()
         "/api/v1/keys",
     ]);
 });
+
+test("catalog adapter lists provider models with the provider secret", async () => {
+    const adapter = new Sub2ApiCatalogAdapter("https://sub2api.example.test", async (input, init) => {
+        assert.equal(String(input), "https://sub2api.example.test/v1/models");
+        assert.equal(new Headers(init?.headers).get("authorization"), "Bearer sk-provider-secret");
+        return new Response(JSON.stringify({ data: [{ id: "gpt-image-1" }, { id: "grok-imagine-video" }, { id: "gpt-image-1" }] }), { status: 200 });
+    });
+    assert.deepEqual(await adapter.listModels("sk-provider-secret"), ["gpt-image-1", "grok-imagine-video"]);
+});

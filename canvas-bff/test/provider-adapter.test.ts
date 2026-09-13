@@ -101,6 +101,42 @@ test("audio adapter returns binary provider output", async () => {
     assert.deepEqual(Buffer.from(result.data), Buffer.from([1, 2, 3]));
 });
 
+test("adapter does not impose a default provider request timeout", async () => {
+  const { providers, provider } = fixture();
+  let signal: AbortSignal | undefined;
+  const adapter = new HttpGenerationProvider({
+    baseUrl: "https://sub2api.example.test",
+    providers,
+    secretBox,
+    fetchImpl: async (input, init) => {
+      signal = init?.signal;
+      return new Response(
+        JSON.stringify({
+          data: [{ b64_json: Buffer.from("image").toString("base64") }],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    },
+  });
+  const result = await adapter.start({
+    id: "generation-no-timeout",
+    accountId: "account-a",
+    projectId: "project-1",
+    providerId: provider.id,
+    kind: "image",
+    input: { prompt: "long-running" },
+    inputHash: "hash",
+    clientRequestId: "request-no-timeout",
+    status: "running",
+    progress: 0,
+    attempt: 0,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+  assert.equal(result.status, "succeeded");
+  assert.equal(signal, undefined);
+});
+
 test("video adapter maps asynchronous start and completed poll", async () => {
   const { providers, provider } = fixture();
   const calls: string[] = [];
@@ -160,6 +196,117 @@ test("video adapter maps asynchronous start and completed poll", async () => {
     "https://sub2api.example.test/v1/videos/video-task-1",
     "https://sub2api.example.test/v1/videos/video-task-1/content",
   ]);
+});
+
+test("video adapter follows Sub2API request_id and done response", async () => {
+  const { providers, provider } = fixture();
+  const calls: string[] = [];
+  const adapter = new HttpGenerationProvider({
+    baseUrl: "https://sub2api.example.test",
+    providers,
+    secretBox,
+    fetchImpl: async (input) => {
+      const url = String(input);
+      calls.push(url);
+      if (url.endsWith("/v1/videos"))
+        return new Response(JSON.stringify({ request_id: "grok-task-1" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      if (url.endsWith("/v1/videos/grok-task-1"))
+        return new Response(
+          JSON.stringify({
+            status: "done",
+            video: { url: "https://cdn.x.ai/video.mp4" },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      return new Response(new Uint8Array([4, 5, 6]), {
+        status: 200,
+        headers: { "Content-Type": "video/mp4" },
+      });
+    },
+  });
+  const generation = {
+    id: "generation-grok-video",
+    accountId: "account-a",
+    projectId: "project-1",
+    providerId: provider.id,
+    kind: "video" as const,
+    input: { prompt: "a moving tree", model: "grok-imagine-video" },
+    inputHash: "hash",
+    clientRequestId: "request-grok-video",
+    status: "running" as const,
+    progress: 0,
+    attempt: 0,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const started = await adapter.start(generation);
+  assert.deepEqual(started, {
+    status: "pending",
+    providerTaskId: "grok-task-1",
+    progress: 0,
+  });
+  const completed = await adapter.poll({
+    ...generation,
+    providerTaskId: "grok-task-1",
+  });
+  assert.equal(completed.status, "succeeded");
+  if (completed.status === "succeeded")
+    assert.deepEqual(Buffer.from(completed.data), Buffer.from([4, 5, 6]));
+  assert.deepEqual(calls, [
+    "https://sub2api.example.test/v1/videos",
+    "https://sub2api.example.test/v1/videos/grok-task-1",
+    "https://sub2api.example.test/v1/videos/grok-task-1/content",
+  ]);
+});
+
+test("video adapter treats expired and unknown statuses as terminal failures", async () => {
+  const { providers, provider } = fixture();
+  const adapter = new HttpGenerationProvider({
+    baseUrl: "https://sub2api.example.test",
+    providers,
+    secretBox,
+    fetchImpl: async (input) => {
+      const url = String(input);
+      const status = url.endsWith("expired") ? "expired" : "mystery";
+      return new Response(JSON.stringify({ status }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+  });
+  const generation = {
+    id: "generation-status",
+    accountId: "account-a",
+    projectId: "project-1",
+    providerId: provider.id,
+    kind: "video" as const,
+    input: { prompt: "status" },
+    inputHash: "hash",
+    clientRequestId: "request-status",
+    status: "provider_polling" as const,
+    progress: 0,
+    providerTaskId: "expired",
+    attempt: 0,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+  assert.deepEqual(await adapter.poll(generation), {
+    status: "failed",
+    retryable: false,
+    errorCode: "PROVIDER_EXPIRED",
+  });
+  assert.deepEqual(
+    await adapter.poll({ ...generation, providerTaskId: "unknown" }),
+    {
+      status: "failed",
+      retryable: false,
+      errorCode: "PROVIDER_STATUS_UNKNOWN",
+    },
+  );
 });
 
 test("adapter marks upstream rate limits retryable without exposing secrets", async () => {

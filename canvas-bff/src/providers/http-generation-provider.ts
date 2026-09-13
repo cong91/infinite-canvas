@@ -13,7 +13,7 @@ export class HttpGenerationProvider implements GenerationProvider {
   private readonly providers: ProviderRepository;
   private readonly secretBox: ProviderSecretBox;
   private readonly fetchImpl: FetchLike;
-  private readonly timeoutMs: number;
+  private readonly timeoutMs?: number;
 
   constructor(options: {
     baseUrl: string;
@@ -26,7 +26,7 @@ export class HttpGenerationProvider implements GenerationProvider {
     this.providers = options.providers;
     this.secretBox = options.secretBox;
     this.fetchImpl = options.fetchImpl ?? fetch;
-    this.timeoutMs = options.timeoutMs ?? 30_000;
+    this.timeoutMs = options.timeoutMs;
   }
 
   async start(generation: GenerationRecord): Promise<ProviderResult> {
@@ -79,23 +79,34 @@ export class HttpGenerationProvider implements GenerationProvider {
         progress: numberValue(payload.progress ?? data.progress) ?? 0,
       };
     }
-    if (["failed", "cancelled", "canceled"].includes(status || ""))
+    if (["failed", "cancelled", "canceled", "expired"].includes(status || ""))
       return {
         status: "failed",
         retryable: false,
         errorCode:
           status === "cancelled" || status === "canceled"
             ? "PROVIDER_CANCELLED"
-            : "PROVIDER_FAILED",
+            : status === "expired"
+              ? "PROVIDER_EXPIRED"
+              : "PROVIDER_FAILED",
       };
-    const url = mediaUrl(payload);
-    return url
-      ? this.download(url, context.secret, "video/mp4")
-      : this.download(
-          `/v1/videos/${encodeURIComponent(generation.providerTaskId)}/content`,
-          context.secret,
-          "video/mp4",
-        );
+    if (
+      status === "done" ||
+      status === "completed" ||
+      status === "succeeded" ||
+      (!status && mediaUrl(payload))
+    ) {
+      return this.downloadCompletedVideo(
+        generation.providerTaskId,
+        payload,
+        context.secret,
+      );
+    }
+    return {
+      status: "failed",
+      retryable: false,
+      errorCode: "PROVIDER_STATUS_UNKNOWN",
+    };
   }
 
   private async image(
@@ -170,7 +181,9 @@ export class HttpGenerationProvider implements GenerationProvider {
     if (!response.ok) return httpFailure(response.status);
     const payload = await jsonBody(response);
     const data = recordValue(payload.data);
-    const id = stringValue(payload.id ?? data.id);
+    const id = stringValue(
+      payload.id ?? payload.request_id ?? data.id ?? data.request_id,
+    );
     const status = stringValue(payload.status ?? data.status)?.toLowerCase();
     if (!id && mediaUrl(payload))
       return this.download(mediaUrl(payload)!, secret, "video/mp4");
@@ -180,12 +193,8 @@ export class HttpGenerationProvider implements GenerationProvider {
         retryable: false,
         errorCode: "PROVIDER_TASK_MISSING",
       };
-    if (["completed", "succeeded"].includes(status || ""))
-      return this.download(
-        mediaUrl(payload) || `/v1/videos/${encodeURIComponent(id)}/content`,
-        secret,
-        "video/mp4",
-      );
+    if (["completed", "succeeded", "done"].includes(status || ""))
+      return this.downloadCompletedVideo(id, payload, secret);
     return {
       status: "pending",
       providerTaskId: id,
@@ -249,6 +258,21 @@ export class HttpGenerationProvider implements GenerationProvider {
     };
   }
 
+  private downloadCompletedVideo(
+    taskId: string,
+    payload: Record<string, unknown>,
+    secret: string,
+  ): Promise<ProviderResult> {
+    const url = mediaUrl(payload);
+    return this.download(
+      url && this.isAllowedOutputUrl(url)
+        ? url
+        : `/v1/videos/${encodeURIComponent(taskId)}/content`,
+      secret,
+      "video/mp4",
+    );
+  }
+
   private isAllowedOutputUrl(url: string): boolean {
     try {
       const parsed = new URL(url, this.baseUrl);
@@ -282,8 +306,11 @@ export class HttpGenerationProvider implements GenerationProvider {
     secret: string,
     options: { method?: string; body?: unknown } = {},
   ): Promise<Response> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    const controller =
+      this.timeoutMs && this.timeoutMs > 0 ? new AbortController() : undefined;
+    const timeout = controller
+      ? setTimeout(() => controller.abort(), this.timeoutMs)
+      : undefined;
     try {
       return await this.fetchImpl(
         path.startsWith("http") ? path : `${this.baseUrl}${path}`,
@@ -295,7 +322,7 @@ export class HttpGenerationProvider implements GenerationProvider {
             ...(options.body ? { "Content-Type": "application/json" } : {}),
           },
           ...(options.body ? { body: JSON.stringify(options.body) } : {}),
-          signal: controller.signal,
+          ...(controller ? { signal: controller.signal } : {}),
         },
       );
     } catch (error) {
@@ -303,7 +330,7 @@ export class HttpGenerationProvider implements GenerationProvider {
         return new Response(null, { status: 504 });
       return new Response(null, { status: 503 });
     } finally {
-      clearTimeout(timeout);
+      if (timeout) clearTimeout(timeout);
     }
   }
 }
@@ -365,13 +392,22 @@ function mediaUrl(payload: Record<string, unknown>): string | undefined {
     payload.data && typeof payload.data === "object"
       ? (payload.data as Record<string, unknown>)
       : undefined;
+  const video =
+    payload.video &&
+    typeof payload.video === "object" &&
+    !Array.isArray(payload.video)
+      ? (payload.video as Record<string, unknown>)
+      : undefined;
   return stringValue(
     payload.url ??
       payload.video_url ??
       payload.result_url ??
       data?.url ??
       data?.video_url ??
-      data?.result_url,
+      data?.result_url ??
+      video?.url ??
+      video?.video_url ??
+      video?.result_url,
   );
 }
 
