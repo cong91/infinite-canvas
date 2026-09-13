@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 
 import { encodeCanvasModel } from "@/services/api/canvas-bff";
@@ -7,7 +7,14 @@ import { useCanvasBffModelOptions } from "@/hooks/use-canvas-bff-model-options";
 
 export function CanvasProviderModelPicker({ capability, value, onChange, className }: { capability: ModelCapability; value?: string; onChange: (value: string) => void; className?: string }) {
     const { providers, modelsByProvider, selectedProviderId, loading, load } = useCanvasBffModelOptions();
-    useEffect(() => { void load(); }, [load]);
+    const loadStartedRef = useRef(false);
+    useEffect(() => {
+        if (loadStartedRef.current) return;
+        loadStartedRef.current = true;
+        void load().catch(() => {
+            loadStartedRef.current = false;
+        });
+    }, [load]);
     const options = useMemo(() => providers.flatMap((provider) => (modelsByProvider[provider.id] || []).map((model) => ({ provider, model }))), [modelsByProvider, providers]);
     const current = options.find((option) => encodeCanvasModel(option.provider.id, option.model) === value) || options.find((option) => option.provider.id === selectedProviderId && option.model === modelOptionName(value || "")) || options.find((option) => option.model === modelOptionName(value || ""));
     const selectedValue = current ? encodeCanvasModel(current.provider.id, current.model) : value || "";

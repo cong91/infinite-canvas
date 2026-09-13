@@ -1,8 +1,9 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { useCanvasProviderStore } from "@/stores/use-canvas-provider-store";
 
 export function useCanvasBffModelOptions() {
-    const providers = useCanvasProviderStore((state) => state.providers.filter((provider) => provider.status === "active"));
+    const allProviders = useCanvasProviderStore((state) => state.providers);
+    const providers = useMemo(() => allProviders.filter((provider) => provider.status === "active"), [allProviders]);
     const modelsByProvider = useCanvasProviderStore((state) => state.modelsByProvider);
     const selectedProviderId = useCanvasProviderStore((state) => state.selectedProviderId);
     const modelsLoadingProviderId = useCanvasProviderStore((state) => state.modelsLoadingProviderId);

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- [修复] Sửa lỗi React production `#185` ở Studio Image/Video do selector provider tạo snapshot không ổn định và picker khởi tạo tải lặp.
 - [修复] Studio Image/Video và Canvas giữ nguyên cặp provider-model người dùng chọn; danh sách model chỉ tải ở picker và generation gửi thẳng tới provider đã chọn.
 - [新增] Cấu hình Canvas hỗ trợ provider OpenAI-compatible bên thứ ba bằng endpoint và API key riêng; BFF lưu endpoint đã chuẩn hóa và gọi catalog/generation đúng provider.
 - [修复] Nhà cung cấp Canvas tải danh sách model qua BFF bằng API key đã chọn, hiển thị model ngay trong cùng khối provider và dùng model đã chọn khi tạo tác vụ.
