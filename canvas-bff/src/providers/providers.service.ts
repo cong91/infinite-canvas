@@ -24,6 +24,17 @@ export class ProvidersService {
         return this.catalog.listCatalog(await this.upstreamToken(sessionToken));
     }
 
+    async models(accountId: string, id: string) {
+        const record = await this.providers.get(accountId, id);
+        if (!record || record.status !== "active") throw new HttpError(404, "PROVIDER_NOT_FOUND", "Provider was not found");
+        try {
+            return this.catalog.listModels(this.secretBox.decrypt(record.secret));
+        } catch (error) {
+            if (error instanceof HttpError) throw error;
+            throw new HttpError(502, "PROVIDER_SECRET_INVALID", "Provider secret could not be decrypted");
+        }
+    }
+
     async list(accountId: string) { return (await this.providers.list(accountId)).map(toPublic); }
     async get(accountId: string, id: string) { const record = await this.providers.get(accountId, id); if (!record) throw new HttpError(404, "PROVIDER_NOT_FOUND", "Provider was not found"); return toPublic(record); }
 

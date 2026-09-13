@@ -85,3 +85,30 @@ test("catalog uses the server-side session bridge without requiring a browser be
         await app.close();
     }
 });
+
+test("provider model route uses the stored secret server-side", async () => {
+    const sessions = new SessionService(new InMemorySessionRepository());
+    const secretBox = new ProviderSecretBox(Buffer.alloc(32, 9));
+    const providers = new InMemoryProviderRepository();
+    const catalog = new Sub2ApiCatalogAdapter(config.sub2ApiBaseUrl, async (input, init) => {
+        if (String(input).endsWith("/v1/models")) {
+            assert.equal(new Headers(init?.headers).get("authorization"), "Bearer provider-secret");
+            return new Response(JSON.stringify({ data: [{ id: "gpt-image-1" }, { id: "grok-imagine-video" }] }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+    });
+    const app = await startTestApp(config, {
+        auth: { sub2ApiClient: new Sub2ApiClient(config.sub2ApiBaseUrl, async () => new Response(JSON.stringify({ data: { id: "model-user", username: "Model User", status: "active" } }), { status: 200 })), sessionService: sessions },
+        workspace: { providers: { catalog, secretBox, providers } },
+    });
+    try {
+        const account = await sessions.upsertAccount({ sub2ApiUserId: "model-user", displayName: "Model User", status: "active" });
+        const session = await sessions.createSession(account);
+        const provider = providers.create({ accountId: account.id, name: "Provider", providerType: "openai-compatible", secret: secretBox.encrypt("provider-secret"), secretDescription: secretBox.describe("provider-secret"), status: "active" });
+        const response = await fetch(`${app.url}/api/v1/providers/${provider.id}/models`, { headers: { Origin: config.canvasOrigin, Cookie: `canvas_session=${session.token}` } });
+        assert.equal(response.status, 200);
+        assert.deepEqual((await response.json()).data, ["gpt-image-1", "grok-imagine-video"]);
+    } finally {
+        await app.close();
+    }
+});

@@ -65,6 +65,27 @@ export class Sub2ApiCatalogAdapter {
         return { secret, item: normalizeCatalogItem(match, true) };
     }
 
+    async listModels(apiKey: string): Promise<string[]> {
+        if (!apiKey.trim()) throw new HttpError(400, "PROVIDER_SECRET_REQUIRED", "Provider secret is required");
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+        try {
+            const response = await this.fetchImpl(`${this.baseUrl}/v1/models`, { headers: { Accept: "application/json", Authorization: `Bearer ${apiKey}` }, signal: controller.signal });
+            if (!response.ok) {
+                if (response.status === 401 || response.status === 403) throw new HttpError(401, "PROVIDER_UNAUTHORIZED", "Sub2API rejected this provider API key");
+                throw new HttpError(502, "PROVIDER_MODELS_UNAVAILABLE", "Provider models are unavailable");
+            }
+            const body = await response.json() as { data?: unknown; models?: unknown };
+            return modelNames(body.data ?? body.models);
+        } catch (error) {
+            if (error instanceof HttpError) throw error;
+            if (error instanceof Error && error.name === "AbortError") throw new HttpError(503, "PROVIDER_MODELS_TIMEOUT", "Provider model list timed out");
+            throw new HttpError(503, "PROVIDER_MODELS_UNAVAILABLE", "Provider model list could not be loaded");
+        } finally {
+            clearTimeout(timeout);
+        }
+    }
+
     private async listPath(path: (typeof SUB2API_CATALOG_PATHS)[number], accessToken: string): Promise<Record<string, unknown>[]> {
         if (!SUB2API_CATALOG_PATHS.includes(path)) throw new Error("Sub2API catalog path is not allowlisted");
         if (!accessToken.trim()) throw new HttpError(401, "SUB2API_TOKEN_REQUIRED", "A Sub2API access token is required for catalog access");
@@ -113,4 +134,15 @@ function asRecords(value: unknown): Record<string, unknown>[] {
 
 function asString(value: unknown): string | undefined {
     return typeof value === "string" && value.trim() ? value.trim() : value === undefined || value === null ? undefined : String(value);
+}
+
+function modelNames(value: unknown): string[] {
+    const records = Array.isArray(value) ? value : value && typeof value === "object" && "items" in value ? (value as { items?: unknown }).items : [];
+    if (!Array.isArray(records)) return [];
+    return [...new Set(records.map((item) => {
+        if (typeof item === "string") return item.trim();
+        if (!item || typeof item !== "object") return "";
+        const record = item as Record<string, unknown>;
+        return asString(record.id ?? record.name ?? record.model) || "";
+    }).filter(Boolean))].sort((left, right) => left.localeCompare(right));
 }

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- [修复] Nhà cung cấp Canvas tải danh sách model qua BFF bằng API key đã chọn, hiển thị model ngay trong cùng khối provider và dùng model đã chọn khi tạo tác vụ.
+- [修复] Canvas BFF bám đúng hợp đồng video Sub2API (`request_id`, `done`, `expired`) và tải URL ngoài qua endpoint `/content`; tác vụ dài không còn bị timeout tường 30 giây mặc định.
 - [修复] 未登录时先显示 Sub2API 登录页面，避免直接进入 Canvas dashboard；模型列表网络/CORS 错误现在会显示具体 endpoint 和处理建议。
 
 - [调整] 将 Canvas BFF 后端统一迁移到 NestJS 模块化运行时，保留 PostgreSQL、MinIO、SSO 和生成 worker 合约。

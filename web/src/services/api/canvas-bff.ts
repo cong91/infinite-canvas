@@ -104,6 +104,7 @@ export const canvasBff = {
     exchangeSub2ApiLaunchCode: (launchCode: string) => request<CanvasSession>("/v1/sso/launch/exchange", { method: "POST", body: { launch_code: launchCode } }),
     logout: () => request<{ ok: true }>("/v1/logout", { method: "POST" }),
     listProviders: () => request<CanvasProvider[]>("/v1/providers"),
+    listProviderModels: (providerId: string) => request<string[]>(`/v1/providers/${encodeURIComponent(providerId)}/models`),
     getProviderCatalog: () => request<ProviderCatalog>("/v1/providers/catalog"),
     createProvider: (input: { name: string; providerType?: string; model?: string; group?: string; channel?: string; catalogKeyId?: string; secret?: string }) => request<CanvasProvider>("/v1/providers", { method: "POST", body: input }),
     updateProvider: (providerId: string, input: { name?: string; model?: string; group?: string; channel?: string; status?: "active" | "disabled" }) =>
