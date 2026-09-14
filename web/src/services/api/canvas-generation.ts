@@ -1,7 +1,6 @@
 import { nanoid } from "nanoid";
 
 import { useCanvasAccountStore } from "@/stores/use-canvas-account-store";
-import { useCanvasProviderStore } from "@/stores/use-canvas-provider-store";
 import { modelOptionName, type AiConfig } from "@/stores/use-config-store";
 import { canvasBff, decodeCanvasModel, type CanvasGeneration } from "./canvas-bff";
 
@@ -25,14 +24,8 @@ export async function submitCanvasGeneration(kind: CanvasGeneration["kind"], con
     const configuredModel = modelOptionName(selectedValue);
     const explicitModel = decodeCanvasModel(selectedValue) || decodeCanvasModel(config.model || "");
     const selectedProviderId = explicitModel?.providerId;
-    const activeProviders = providers.filter((item) => item.status === "active");
-    const preferredProviderId = useCanvasProviderStore.getState().selectedProviderId;
-    const provider = selectedProviderId
-        ? activeProviders.find((item) => item.id === selectedProviderId)
-        : activeProviders.find((item) => item.id === preferredProviderId && item.model === configuredModel)
-            || activeProviders.find((item) => item.model === configuredModel)
-            || (activeProviders.length === 1 ? activeProviders[0] : undefined);
-    if (!provider) throw new Error("No active Canvas provider is configured");
+    const provider = selectedProviderId ? providers.find((item) => item.status === "active" && item.id === selectedProviderId) : undefined;
+    if (!explicitModel || !provider) throw new Error("Select an active Canvas provider and model before generating");
     const project = projects[0] || (await canvasBff.createProject({ name: "Canvas Workbench", data: { source: "workbench" } }));
     return canvasBff.createGeneration({
         projectId: project.id,
