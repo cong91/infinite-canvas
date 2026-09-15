@@ -41,7 +41,7 @@ export const useCanvasProviderStore = create<CanvasProviderStore>()((set) => ({
             const providers = await canvasBff.listProviders();
             set((state) => ({
                 providers,
-                selectedProviderId: providers.some((item) => item.id === state.selectedProviderId && item.status === "active") ? state.selectedProviderId : providers.find((item) => item.status === "active")?.id || null,
+                selectedProviderId: providers.some((item) => item.id === state.selectedProviderId && item.status === "active") ? state.selectedProviderId : null,
                 status: "ready",
                 error: null,
             }));
@@ -72,7 +72,7 @@ export const useCanvasProviderStore = create<CanvasProviderStore>()((set) => ({
     },
     create: async (input) => {
         const provider = await canvasBff.createProvider(input);
-        set((state) => ({ providers: [...state.providers.filter((item) => item.id !== provider.id), provider], selectedProviderId: state.selectedProviderId || provider.id, error: null }));
+        set((state) => ({ providers: [...state.providers.filter((item) => item.id !== provider.id), provider], error: null }));
         return provider;
     },
     update: async (providerId, input) => {
