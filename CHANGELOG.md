@@ -3,6 +3,8 @@
 ## Unreleased
 
 - [修复] Canvas provider/model selector hiển thị loading, lỗi tải và nút thử lại thay vì select trống không phản hồi.
+- [修复] Canvas Studio provider/model picker mở và chọn được trong Settings, Studio và Canvas; popup không còn bị label kích hoạt kép hoặc lớp canvas che khuất.
+- [修复] Gộp request provider/model đang chạy và chỉ tải lại khi cần, để các select Studio không bị khóa bởi vòng lặp request.
 - [调整] Thiết kế lại mặc định Studio ảnh/video thành hai nhóm provider-model rõ ràng; lựa chọn thay đổi trong Studio được giữ theo phiên và không ghi đè mặc định.
 - [修复] Provider/model picker không còn ghép model trùng tên vào provider sai; mặc định image/video chỉ chọn provider có model mặc định tương ứng và lọc theo capability.
 - [修复] Sửa mặc định provider/model cho Studio và Canvas: model image/video được lọc đúng capability và tự liên kết provider tương ứng thay vì rơi vào provider Text đầu tiên.
