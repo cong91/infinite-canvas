@@ -1,6 +1,7 @@
 import { nanoid } from "nanoid";
 
 import { useCanvasAccountStore } from "@/stores/use-canvas-account-store";
+import { useCanvasProviderStore } from "@/stores/use-canvas-provider-store";
 import { modelOptionName, type AiConfig } from "@/stores/use-config-store";
 import { canvasBff, decodeCanvasModel, type CanvasGeneration } from "./canvas-bff";
 
@@ -18,7 +19,11 @@ export function isCanvasAccountAuthenticated() {
 
 export async function submitCanvasGeneration(kind: CanvasGeneration["kind"], config: AiConfig, prompt: string, extra: Record<string, unknown> = {}, options?: { signal?: AbortSignal }) {
     throwIfAborted(options?.signal);
-    const [providers, projects] = await Promise.all([canvasBff.listProviders(), canvasBff.listProjects()]);
+    const providerStore = useCanvasProviderStore.getState();
+    const [, projects] = await Promise.all([providerStore.load(), canvasBff.listProjects()]);
+    const providerState = useCanvasProviderStore.getState();
+    if (!providerState.providersLoaded && providerState.error) throw new Error(providerState.error);
+    const providers = providerState.providers;
     const capabilityModel = kind === "image" ? config.imageModel : kind === "video" ? config.videoModel : kind === "audio" ? config.audioModel : config.textModel;
     const selectedValue = capabilityModel || config.model;
     const configuredModel = modelOptionName(selectedValue);
