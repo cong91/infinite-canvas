@@ -18,9 +18,12 @@ type CanvasProviderModelPickerProps = {
 export function CanvasProviderModelPicker({ capability, value, onChange, className, showLabels = false }: CanvasProviderModelPickerProps) {
     const { t } = useTranslation();
     const { providers, modelsByProvider, providerLoading, modelLoading, error, load } = useCanvasBffModelOptions();
+    const decodedValue = decodeCanvasModel(value || "");
+    const [selectedProviderId, setSelectedProviderId] = useState<string | null>(() => decodedValue?.providerId || null);
     const [loadAttempted, setLoadAttempted] = useState(false);
     const loadStartedRef = useRef(false);
     const normalizedValueRef = useRef("");
+
     useEffect(() => {
         if (loadStartedRef.current) return;
         loadStartedRef.current = true;
@@ -31,27 +34,34 @@ export function CanvasProviderModelPicker({ capability, value, onChange, classNa
                 setLoadAttempted(true);
             });
     }, [load]);
+
     const options = useMemo(
         () =>
             providers.flatMap((provider) => {
-                const models = modelsByProvider[provider.id] || (provider.model ? [provider.model] : []);
+                const fetchedModels = modelsByProvider[provider.id];
+                const models = fetchedModels?.length ? fetchedModels : provider.model ? [provider.model] : [];
                 return models.filter((model) => guessCapability(model) === capability).map((model) => ({ provider, model }));
             }),
         [capability, modelsByProvider, providers],
     );
     const compatibleProviders = useMemo(() => providers.filter((provider) => options.some((option) => option.provider.id === provider.id)), [options, providers]);
-    const decodedValue = decodeCanvasModel(value || "");
     const current = options.find((option) => encodeCanvasModel(option.provider.id, option.model) === value) || options.find((option) => option.provider.id === decodedValue?.providerId && option.model === decodedValue?.model);
-    const selectedValue = current ? encodeCanvasModel(current.provider.id, current.model) : value || "";
+    const providerForSelection = current?.provider || providers.find((provider) => provider.id === (decodedValue?.providerId || selectedProviderId));
+    const currentModelOptions = options.filter((item) => item.provider.id === providerForSelection?.id);
+    const selectedValue = current ? encodeCanvasModel(current.provider.id, current.model) : "";
     const providerLoadError = Boolean(error && !providers.length);
     const modelLoadError = Boolean(error && providers.length);
-    const providerForSelection = current?.provider;
-    const currentModelOptions = options.filter((item) => item.provider.id === providerForSelection?.id);
+
+    useEffect(() => {
+        if (decodedValue?.providerId && decodedValue.providerId !== selectedProviderId) setSelectedProviderId(decodedValue.providerId);
+    }, [decodedValue?.providerId, selectedProviderId]);
+
     useEffect(() => {
         if (!current || selectedValue === value || normalizedValueRef.current === selectedValue) return;
         normalizedValueRef.current = selectedValue;
         onChange(selectedValue);
     }, [current, onChange, selectedValue, value]);
+
     useEffect(() => {
         if (!loadAttempted || providerLoading || modelLoading || error || !value || current) return;
         normalizedValueRef.current = "";
@@ -61,19 +71,18 @@ export function CanvasProviderModelPicker({ capability, value, onChange, classNa
     const providerSelect = (
         <Select
             value={providerForSelection?.id || ""}
-            disabled={providerLoading || !compatibleProviders.length}
+            disabled={providerLoading || modelLoading || !compatibleProviders.length}
             onValueChange={(providerId) => {
-                const option = options.find((item) => item.provider.id === providerId);
-                if (!option) return;
-                const nextValue = encodeCanvasModel(option.provider.id, option.model);
-                normalizedValueRef.current = nextValue;
-                onChange(nextValue);
+                setSelectedProviderId(providerId);
+                if (providerForSelection?.id === providerId && current) return;
+                normalizedValueRef.current = "";
+                onChange("");
             }}
         >
             <SelectTrigger aria-label={t("config.account.providerLabel", { defaultValue: "Provider" })} className="h-8 min-w-0 w-full">
                 <span className="truncate">
-                    {providerLoading ? <LoaderCircle className="mr-1 inline size-3 animate-spin" /> : null}
-                    {providerLoading
+                    {providerLoading || modelLoading ? <LoaderCircle className="mr-1 inline size-3 animate-spin" /> : null}
+                    {providerLoading || modelLoading
                         ? t("config.account.loadingProviders", { defaultValue: "Loading providers…" })
                         : providerLoadError
                           ? t("config.account.providerLoadFailed", { defaultValue: "Unable to load providers" })
@@ -89,11 +98,15 @@ export function CanvasProviderModelPicker({ capability, value, onChange, classNa
             </SelectContent>
         </Select>
     );
+
     const modelSelect = (
         <Select
             value={selectedValue}
             disabled={providerLoading || modelLoading || !currentModelOptions.length}
             onValueChange={(nextValue) => {
+                const next = decodeCanvasModel(nextValue);
+                if (!next) return;
+                setSelectedProviderId(next.providerId);
                 normalizedValueRef.current = nextValue;
                 onChange(nextValue);
             }}
@@ -117,6 +130,7 @@ export function CanvasProviderModelPicker({ capability, value, onChange, classNa
             </SelectContent>
         </Select>
     );
+
     return (
         <div data-capability={capability} className={`grid min-w-0 gap-2 sm:grid-cols-2 ${className || ""}`}>
             {showLabels ? (
