@@ -6,6 +6,7 @@ export function useCanvasBffModelOptions() {
     const providers = useMemo(() => allProviders.filter((provider) => provider.status === "active"), [allProviders]);
     const modelsByProvider = useCanvasProviderStore((state) => state.modelsByProvider);
     const modelsLoadingProviderId = useCanvasProviderStore((state) => state.modelsLoadingProviderId);
+    const modelsLoadingProviderIds = useCanvasProviderStore((state) => state.modelsLoadingProviderIds);
     const loadProviders = useCanvasProviderStore((state) => state.load);
     const loadModels = useCanvasProviderStore((state) => state.loadModels);
     const [loadingPhase, setLoadingPhase] = useState<"idle" | "providers" | "models">("idle");
@@ -31,5 +32,5 @@ export function useCanvasBffModelOptions() {
             setLoadingPhase("idle");
         }
     }, [loadModels, loadProviders]);
-    return { providers, modelsByProvider, providerLoading: loadingPhase === "providers", modelLoading: loadingPhase === "models" || Boolean(modelsLoadingProviderId), error, load };
+    return { providers, modelsByProvider, providerLoading: loadingPhase === "providers", modelLoading: loadingPhase === "models" || modelsLoadingProviderIds.length > 0 || Boolean(modelsLoadingProviderId), error, load };
 }
