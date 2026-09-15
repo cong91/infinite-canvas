@@ -59,6 +59,7 @@ type GenerationLog = {
     size: string;
     quality: string;
     status: "success" | "failed";
+    error?: string;
     images: GeneratedImage[];
 };
 
@@ -208,6 +209,7 @@ export default function ImagePage() {
                     successCount,
                     failCount,
                     status: successCount ? "success" : "failed",
+                    error: successCount ? undefined : error,
                     images: successImages,
                 }),
             );
@@ -758,8 +760,8 @@ function LogCard({ log, selected, active, onSelectedChange, onClick }: { log: Ge
             className={`block w-full rounded-lg border p-2 text-left transition ${active ? "border-stone-900 bg-blue-50 dark:border-stone-100 dark:bg-blue-950/20" : "border-stone-200 bg-background hover:bg-stone-50 dark:border-stone-800 dark:hover:bg-stone-900"}`}
             onClick={onClick}
         >
-            <div className="grid grid-cols-[minmax(128px,1fr)_auto] gap-2">
-                <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-2">
+            <div className="flex min-w-0 items-start gap-2">
+                <div className="flex min-w-0 flex-1 items-start gap-2">
                     <Checkbox className="mt-0.5" checked={selected} onClick={(event) => event.stopPropagation()} onChange={(event) => onSelectedChange(event.target.checked)} />
                     <div className="min-w-0">
                         <div className="truncate text-sm font-semibold leading-5">{log.title}</div>
@@ -772,8 +774,8 @@ function LogCard({ log, selected, active, onSelectedChange, onClick }: { log: Ge
                         ) : null}
                     </div>
                 </div>
-                <div className="grid justify-items-end gap-2">
-                    <div className="flex gap-1">
+                <div className="flex max-w-[46%] shrink-0 flex-col items-end gap-1">
+                    <div className="flex max-w-full flex-wrap justify-end gap-1">
                         <Tag className="m-0 flex h-6 items-center rounded-md px-1.5 text-xs leading-none" color="blue">
                             {t("workbench.successCount", { count: log.successCount ?? log.imageCount })}
                         </Tag>
@@ -783,7 +785,7 @@ function LogCard({ log, selected, active, onSelectedChange, onClick }: { log: Ge
                             </Tag>
                         ) : null}
                     </div>
-                    <div className="flex flex-wrap justify-end gap-1">
+                    <div className="flex max-w-full flex-wrap justify-end gap-1">
                         <Tag className="m-0 flex h-6 items-center rounded-md px-1.5 text-xs leading-none">{t("workbench.itemCount", { count: log.imageCount })}</Tag>
                         <Tag className="m-0 flex h-6 items-center rounded-md px-1.5 text-xs leading-none" color="green">
                             {formatDuration(log.durationMs)}
@@ -843,6 +845,7 @@ async function normalizeLog(log: Partial<GenerationLog>): Promise<GenerationLog>
         quality: log.quality || config.quality || "",
         status: log.status || "success",
         images,
+        error: log.error,
     };
 }
 
@@ -891,6 +894,7 @@ function buildLog({
     successCount,
     failCount,
     status,
+    error,
     images,
 }: {
     prompt: string;
@@ -901,6 +905,7 @@ function buildLog({
     successCount: number;
     failCount: number;
     status: GenerationLog["status"];
+    error?: string;
     images: GeneratedImage[];
 }): GenerationLog {
     const logConfig = {
@@ -926,6 +931,7 @@ function buildLog({
         size: logConfig.size,
         quality: logConfig.quality,
         status,
+        error,
         images,
     };
 }
