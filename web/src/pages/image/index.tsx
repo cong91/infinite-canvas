@@ -107,7 +107,7 @@ export default function ImagePage() {
     const processedCommandRef = useRef(0);
     const agentTaskIdRef = useRef<string | undefined>(undefined);
 
-    const model = accountStatus === "authenticated" ? studioImageModel || (effectiveConfig.imageModel.startsWith("canvas::") ? effectiveConfig.imageModel : "") : studioImageModel || effectiveConfig.imageModel || effectiveConfig.model;
+    const model = accountStatus === "authenticated" ? (studioImageModel ?? (effectiveConfig.imageModel.startsWith("canvas::") ? effectiveConfig.imageModel : "")) : studioImageModel || effectiveConfig.imageModel || effectiveConfig.model;
     const canGenerate = Boolean(prompt.trim());
     const generationCount = Math.max(1, Math.min(10, Number(config.count) || 1));
 
@@ -122,7 +122,7 @@ export default function ImagePage() {
     }, []);
 
     useEffect(() => {
-        if (accountStatus === "authenticated" && !studioImageModel && effectiveConfig.imageModel.startsWith("canvas::")) setStudioModel("image", effectiveConfig.imageModel);
+        if (accountStatus === "authenticated" && studioImageModel === undefined && effectiveConfig.imageModel.startsWith("canvas::")) setStudioModel("image", effectiveConfig.imageModel);
     }, [accountStatus, effectiveConfig.imageModel, setStudioModel, studioImageModel]);
 
     const addReferences = async (files?: FileList | null) => {

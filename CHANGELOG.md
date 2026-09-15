@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- [修复] Mặc định Studio ảnh/video cho phép chọn provider độc lập rồi chọn model khả dụng theo provider, không còn bị khóa do model cấu hình cũ.
 - [修复] Studio mặc định provider/model không còn tự điền theo provider hiện tại; người dùng có thể chọn riêng tổ hợp mặc định cho ảnh và video.
 - [修复] Canvas Studio không còn dùng model cấu hình cục bộ để ngầm chọn provider; khi chưa chọn cặp Canvas provider/model, thao tác tạo sẽ yêu cầu chọn rõ ràng.
 - [修复] Studio ảnh/video không còn rơi về provider Text khi provider đó không có model đúng capability; hiển thị trạng thái chưa có provider/model phù hợp.

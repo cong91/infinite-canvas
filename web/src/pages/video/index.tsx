@@ -108,7 +108,7 @@ export default function VideoPage() {
     const processedCommandRef = useRef(0);
     const agentTaskIdRef = useRef<string | undefined>(undefined);
 
-    const model = accountStatus === "authenticated" ? studioVideoModel || (effectiveConfig.videoModel.startsWith("canvas::") ? effectiveConfig.videoModel : "") : studioVideoModel || effectiveConfig.videoModel || effectiveConfig.model;
+    const model = accountStatus === "authenticated" ? (studioVideoModel ?? (effectiveConfig.videoModel.startsWith("canvas::") ? effectiveConfig.videoModel : "")) : studioVideoModel || effectiveConfig.videoModel || effectiveConfig.model;
     const canGenerate = Boolean(prompt.trim());
 
     useEffect(() => {
@@ -122,7 +122,7 @@ export default function VideoPage() {
     }, []);
 
     useEffect(() => {
-        if (accountStatus === "authenticated" && !studioVideoModel && effectiveConfig.videoModel.startsWith("canvas::")) setStudioModel("video", effectiveConfig.videoModel);
+        if (accountStatus === "authenticated" && studioVideoModel === undefined && effectiveConfig.videoModel.startsWith("canvas::")) setStudioModel("video", effectiveConfig.videoModel);
     }, [accountStatus, effectiveConfig.videoModel, setStudioModel, studioVideoModel]);
 
     const addReferences = async (files?: FileList | null) => {
