@@ -3,6 +3,7 @@
 ## Unreleased
 
 - [修复] Gộp request provider/model đang chạy và chỉ tải lại khi cần, để các select Studio không bị khóa bởi vòng lặp request.
+- [修复] Canvas Studio provider/model picker mở và chọn được trong Settings, Studio và Canvas; popup không còn bị label kích hoạt kép hoặc lớp canvas che khuất.
 
 - [修复] Mặc định Studio ảnh/video cho phép chọn provider độc lập rồi chọn model khả dụng theo provider, không còn bị khóa do model cấu hình cũ.
 - [修复] Studio mặc định provider/model không còn tự điền theo provider hiện tại; người dùng có thể chọn riêng tổ hợp mặc định cho ảnh và video.
