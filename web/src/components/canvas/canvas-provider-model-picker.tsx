@@ -79,7 +79,7 @@ export function CanvasProviderModelPicker({ capability, value, onChange, classNa
                 onChange("");
             }}
         >
-            <SelectTrigger aria-label={t("config.account.providerLabel", { defaultValue: "Provider" })} className="h-8 min-w-0 w-full">
+            <SelectTrigger aria-label={t("config.account.providerLabel", { defaultValue: "Provider" })} className="h-8 min-w-0 w-full" onMouseDown={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
                 <span className="truncate">
                     {providerLoading || modelLoading ? <LoaderCircle className="mr-1 inline size-3 animate-spin" /> : null}
                     {providerLoading || modelLoading
@@ -89,7 +89,16 @@ export function CanvasProviderModelPicker({ capability, value, onChange, classNa
                           : providerForSelection?.name || t("config.account.selectProvider", { defaultValue: "Select provider" })}
                 </span>
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent
+                data-canvas-no-zoom
+                position="popper"
+                align="start"
+                side="bottom"
+                sideOffset={6}
+                className="z-[1200] w-64 max-w-[calc(100vw-24px)] rounded-xl border border-border/70 bg-popover p-1 shadow-xl"
+                onMouseDown={(event) => event.stopPropagation()}
+                onPointerDown={(event) => event.stopPropagation()}
+            >
                 {compatibleProviders.map((provider) => (
                     <SelectItem key={provider.id} value={provider.id}>
                         {provider.name}
@@ -111,7 +120,7 @@ export function CanvasProviderModelPicker({ capability, value, onChange, classNa
                 onChange(nextValue);
             }}
         >
-            <SelectTrigger aria-label={t("config.account.modelLabel", { defaultValue: "Model" })} className="h-8 min-w-0 w-full">
+            <SelectTrigger aria-label={t("config.account.modelLabel", { defaultValue: "Model" })} className="h-8 min-w-0 w-full" onMouseDown={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
                 <span className="truncate">
                     {providerLoading || modelLoading ? <LoaderCircle className="mr-1 inline size-3 animate-spin" /> : null}
                     {providerLoading || modelLoading
@@ -121,7 +130,16 @@ export function CanvasProviderModelPicker({ capability, value, onChange, classNa
                           : current?.model || (currentModelOptions.length ? t("config.account.selectModel", { defaultValue: "Select model" }) : t("config.account.noModelsForCapability", { defaultValue: "No models available" }))}
                 </span>
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent
+                data-canvas-no-zoom
+                position="popper"
+                align="start"
+                side="bottom"
+                sideOffset={6}
+                className="z-[1200] w-64 max-w-[calc(100vw-24px)] rounded-xl border border-border/70 bg-popover p-1 shadow-xl"
+                onMouseDown={(event) => event.stopPropagation()}
+                onPointerDown={(event) => event.stopPropagation()}
+            >
                 {currentModelOptions.map((item) => (
                     <SelectItem key={item.model} value={encodeCanvasModel(item.provider.id, item.model)}>
                         {item.model}
@@ -134,18 +152,18 @@ export function CanvasProviderModelPicker({ capability, value, onChange, classNa
     return (
         <div data-capability={capability} className={`grid min-w-0 gap-2 sm:grid-cols-2 ${className || ""}`}>
             {showLabels ? (
-                <label className="grid min-w-0 gap-1 text-xs text-muted-foreground">
+                <div className="grid min-w-0 gap-1 text-xs text-muted-foreground">
                     <span>{t("config.account.providerLabel", { defaultValue: "Provider" })}</span>
                     {providerSelect}
-                </label>
+                </div>
             ) : (
                 providerSelect
             )}
             {showLabels ? (
-                <label className="grid min-w-0 gap-1 text-xs text-muted-foreground">
+                <div className="grid min-w-0 gap-1 text-xs text-muted-foreground">
                     <span>{t("config.account.modelLabel", { defaultValue: "Model" })}</span>
                     {modelSelect}
-                </label>
+                </div>
             ) : (
                 modelSelect
             )}
