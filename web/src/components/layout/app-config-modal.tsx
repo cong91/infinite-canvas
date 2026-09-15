@@ -297,8 +297,8 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                                                 icon={<RefreshCw className="size-3.5" />}
                                                 loading={canvasProviderStatus === "loading"}
                                                 onClick={() => {
-                                                    void loadCanvasProviders();
-                                                    void loadCanvasCatalog();
+                                                    void loadCanvasProviders(true);
+                                                    void loadCanvasCatalog(true);
                                                 }}
                                             >
                                                 {t("config.account.refresh", { defaultValue: "Refresh" })}
@@ -314,8 +314,8 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                                                         size="small"
                                                         icon={<RefreshCw className="size-3.5" />}
                                                         onClick={() => {
-                                                            void loadCanvasProviders();
-                                                            void loadCanvasCatalog();
+                                                            void loadCanvasProviders(true);
+                                                            void loadCanvasCatalog(true);
                                                         }}
                                                     >
                                                         {t("common.retry")}

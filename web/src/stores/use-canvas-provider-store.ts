@@ -10,14 +10,17 @@ type CanvasProviderStore = {
     providers: CanvasProvider[];
     selectedProviderId: string | null;
     catalog: ProviderCatalog | null;
+    providersLoaded: boolean;
+    catalogLoaded: boolean;
     status: "idle" | "loading" | "ready" | "error";
     error: string | null;
     modelsByProvider: Record<string, string[]>;
     modelsLoadingProviderId: string | null;
+    modelsLoadingProviderIds: string[];
     studioModels: Partial<Record<StudioCapability, string>>;
-    load: () => Promise<void>;
-    loadCatalog: () => Promise<void>;
-    loadModels: (providerId: string) => Promise<string[]>;
+    load: (force?: boolean) => Promise<void>;
+    loadCatalog: (force?: boolean) => Promise<void>;
+    loadModels: (providerId: string, force?: boolean) => Promise<string[]>;
     create: (input: ProviderInput) => Promise<CanvasProvider>;
     update: (providerId: string, input: ProviderPatch) => Promise<CanvasProvider>;
     remove: (providerId: string) => Promise<void>;
@@ -26,49 +29,103 @@ type CanvasProviderStore = {
     clear: () => void;
 };
 
-export const useCanvasProviderStore = create<CanvasProviderStore>()((set) => ({
+let providersRequest: Promise<void> | null = null;
+let catalogRequest: Promise<void> | null = null;
+const modelsRequests = new Map<string, Promise<string[]>>();
+let requestGeneration = 0;
+
+export const useCanvasProviderStore = create<CanvasProviderStore>()((set, get) => ({
     providers: [],
     selectedProviderId: null,
     catalog: null,
+    providersLoaded: false,
+    catalogLoaded: false,
     status: "idle",
     error: null,
     modelsByProvider: {},
     modelsLoadingProviderId: null,
     studioModels: {},
-    load: async () => {
+    modelsLoadingProviderIds: [],
+    load: async (force = false) => {
+        if (!force && get().providersLoaded) return;
+        if (providersRequest) return providersRequest;
+        const generation = requestGeneration;
         set({ status: "loading", error: null });
-        try {
-            const providers = await canvasBff.listProviders();
-            set((state) => ({
-                providers,
-                selectedProviderId: providers.some((item) => item.id === state.selectedProviderId && item.status === "active") ? state.selectedProviderId : null,
-                status: "ready",
-                error: null,
-            }));
-        } catch (error) {
-            set({ status: "error", error: error instanceof Error ? error.message : "Provider list could not be loaded" });
-        }
+        const request = canvasBff
+            .listProviders()
+            .then((providers) => {
+                if (generation !== requestGeneration) return;
+                set((state) => ({
+                    providers,
+                    providersLoaded: true,
+                    modelsByProvider: force ? {} : Object.fromEntries(Object.entries(state.modelsByProvider).filter(([providerId]) => providers.some((provider) => provider.id === providerId))),
+                    selectedProviderId: providers.some((item) => item.id === state.selectedProviderId && item.status === "active") ? state.selectedProviderId : null,
+                    status: "ready",
+                    error: null,
+                }));
+            })
+            .catch((error) => {
+                if (generation !== requestGeneration) return;
+                set({ status: "error", error: error instanceof Error ? error.message : "Provider list could not be loaded" });
+            })
+            .finally(() => {
+                if (providersRequest === request) providersRequest = null;
+            });
+        providersRequest = request;
+        return providersRequest;
     },
-    loadCatalog: async () => {
+    loadCatalog: async (force = false) => {
+        if (!force && get().catalogLoaded) return;
+        if (catalogRequest) return catalogRequest;
+        const generation = requestGeneration;
         set({ status: "loading", error: null });
-        try {
-            const catalog = await canvasBff.getProviderCatalog();
-            set({ catalog, status: "ready", error: null });
-        } catch (error) {
-            const message = error instanceof CanvasBffError && error.status === 401 ? "Sub2API catalog session is unavailable" : error instanceof Error ? error.message : "Provider catalog could not be loaded";
-            set({ status: "error", error: message });
-        }
+        const request = canvasBff
+            .getProviderCatalog()
+            .then((catalog) => {
+                if (generation !== requestGeneration) return;
+                set({ catalog, catalogLoaded: true, status: "ready", error: null });
+            })
+            .catch((error) => {
+                if (generation !== requestGeneration) return;
+                const message = error instanceof CanvasBffError && error.status === 401 ? "Sub2API catalog session is unavailable" : error instanceof Error ? error.message : "Provider catalog could not be loaded";
+                set({ status: "error", error: message });
+            })
+            .finally(() => {
+                if (catalogRequest === request) catalogRequest = null;
+            });
+        catalogRequest = request;
+        return catalogRequest;
     },
-    loadModels: async (providerId) => {
-        set({ modelsLoadingProviderId: providerId, error: null });
-        try {
-            const models = await canvasBff.listProviderModels(providerId);
-            set((state) => ({ modelsByProvider: { ...state.modelsByProvider, [providerId]: models }, modelsLoadingProviderId: state.modelsLoadingProviderId === providerId ? null : state.modelsLoadingProviderId }));
-            return models;
-        } catch (error) {
-            set((state) => ({ modelsLoadingProviderId: state.modelsLoadingProviderId === providerId ? null : state.modelsLoadingProviderId, error: error instanceof Error ? error.message : "Provider model list could not be loaded" }));
-            throw error;
-        }
+    loadModels: async (providerId, force = false) => {
+        const cached = get().modelsByProvider[providerId];
+        if (!force && cached !== undefined) return cached;
+        const pending = modelsRequests.get(providerId);
+        if (pending) return pending;
+        const generation = requestGeneration;
+        set((state) => ({ modelsLoadingProviderId: providerId, modelsLoadingProviderIds: state.modelsLoadingProviderIds.includes(providerId) ? state.modelsLoadingProviderIds : [...state.modelsLoadingProviderIds, providerId], error: null }));
+        const request = canvasBff
+            .listProviderModels(providerId)
+            .then((models) => {
+                if (generation !== requestGeneration) return models;
+                set((state) => {
+                    const modelsLoadingProviderIds = state.modelsLoadingProviderIds.filter((id) => id !== providerId);
+                    return { modelsByProvider: { ...state.modelsByProvider, [providerId]: models }, modelsLoadingProviderIds, modelsLoadingProviderId: modelsLoadingProviderIds.at(-1) || null };
+                });
+                return models;
+            })
+            .catch((error) => {
+                if (generation !== requestGeneration) throw error;
+                set((state) => {
+                    const modelsLoadingProviderIds = state.modelsLoadingProviderIds.filter((id) => id !== providerId);
+                    return { modelsLoadingProviderIds, modelsLoadingProviderId: modelsLoadingProviderIds.at(-1) || null, error: error instanceof Error ? error.message : "Provider model list could not be loaded" };
+                });
+                throw error;
+            })
+            .finally(() => {
+                if (modelsRequests.get(providerId) === request) modelsRequests.delete(providerId);
+            });
+        modelsRequests.set(providerId, request);
+        return request;
     },
     create: async (input) => {
         const provider = await canvasBff.createProvider(input);
@@ -86,5 +143,11 @@ export const useCanvasProviderStore = create<CanvasProviderStore>()((set) => ({
     },
     select: (providerId) => set((state) => ({ selectedProviderId: state.providers.some((item) => item.id === providerId && item.status === "active") ? providerId : state.selectedProviderId })),
     setStudioModel: (capability, value) => set((state) => ({ studioModels: { ...state.studioModels, [capability]: value } })),
-    clear: () => set({ providers: [], selectedProviderId: null, catalog: null, modelsByProvider: {}, modelsLoadingProviderId: null, studioModels: {}, status: "idle", error: null }),
+    clear: () => {
+        requestGeneration += 1;
+        providersRequest = null;
+        catalogRequest = null;
+        modelsRequests.clear();
+        set({ providers: [], selectedProviderId: null, catalog: null, providersLoaded: false, catalogLoaded: false, modelsByProvider: {}, modelsLoadingProviderId: null, modelsLoadingProviderIds: [], studioModels: {}, status: "idle", error: null });
+    },
 }));
