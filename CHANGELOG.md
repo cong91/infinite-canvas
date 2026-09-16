@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- [修复] OVH media proxy ẩn CORS headers từ MinIO trước khi thêm policy chuẩn, tránh `Access-Control-Allow-Origin` bị trả trùng khiến ảnh tạo xong không tải được.
 - [修复] Gộp request provider/model đang chạy và chỉ tải lại khi cần, để các select Studio không bị khóa bởi vòng lặp request.
 - [修复] Canvas Studio provider/model picker mở và chọn được trong Settings, Studio và Canvas; popup không còn bị label kích hoạt kép hoặc lớp canvas che khuất.
 
