@@ -7,8 +7,18 @@ import type {
 import type { GenerationRecord } from "../generations/repository.js";
 import { ProviderSecretBox } from "../crypto/secret-box.js";
 import type { ProviderRepository } from "./repository.js";
+import {
+  buildGenerationIntent,
+  generationIntentToSub2ApiBody,
+} from "./generation-intent.js";
 
 type FetchLike = typeof fetch;
+type ProviderContext = {
+  baseUrl: string;
+  secret: string;
+  allowExternalOutputUrl: boolean;
+  protocol: "sub2api" | "openai-compatible";
+};
 
 export class HttpGenerationProvider implements GenerationProvider {
   private readonly baseUrl: string;
@@ -44,7 +54,7 @@ export class HttpGenerationProvider implements GenerationProvider {
     if (generation.kind === "audio")
       return this.audio(context.baseUrl, context.secret, generation);
     if (generation.kind === "video")
-      return this.videoStart(context.baseUrl, context.secret, generation, context.allowExternalOutputUrl);
+      return this.videoStart(context, generation);
     return this.text(context.baseUrl, context.secret, generation);
   }
 
@@ -70,7 +80,10 @@ export class HttpGenerationProvider implements GenerationProvider {
     if (!response.ok) return httpFailure(response);
     const payload = await jsonBody(response);
     const data = recordValue(payload.data);
-    const status = stringValue(payload.status ?? data.status)?.toLowerCase();
+    const video = recordValue(payload.video ?? data.video);
+    const status = stringValue(
+      payload.status ?? data.status ?? video.status,
+    )?.toLowerCase();
     if (
       ["queued", "pending", "running", "in_progress", "processing"].includes(
         status || "",
@@ -79,7 +92,7 @@ export class HttpGenerationProvider implements GenerationProvider {
       return {
         status: "pending",
         providerTaskId: generation.providerTaskId,
-        progress: numberValue(payload.progress ?? data.progress) ?? 0,
+        progress: numberValue(payload.progress ?? data.progress ?? video.progress) ?? 0,
       };
     }
     if (["failed", "cancelled", "canceled", "expired"].includes(status || ""))
@@ -174,41 +187,81 @@ export class HttpGenerationProvider implements GenerationProvider {
   }
 
   private async videoStart(
-    baseUrl: string,
-    secret: string,
+    context: ProviderContext,
     generation: GenerationRecord,
-    allowExternalOutputUrl: boolean,
   ): Promise<ProviderResult> {
-    const response = await this.request(baseUrl, "/v1/videos", secret, {
-      method: "POST",
-      body: {
-        model: inputString(generation, "model") || "sora-2",
-        prompt: inputString(generation, "prompt"),
-        seconds: inputString(generation, "seconds") || undefined,
-        size: inputString(generation, "size") || undefined,
+    const intent = buildGenerationIntent(generation);
+    const response = await this.request(
+      context.baseUrl,
+      context.protocol === "sub2api" ? "/v1/videos/generations" : "/v1/videos",
+      context.secret,
+      {
+        method: "POST",
+        idempotencyKey: generation.clientRequestId,
+        body:
+          context.protocol === "sub2api"
+            ? generationIntentToSub2ApiBody(intent)
+            : {
+                model: intent.model,
+                prompt: intent.prompt,
+                seconds: inputString(generation, "seconds") || undefined,
+                size: inputString(generation, "size") || undefined,
+              },
       },
-    });
+    );
     if (!response.ok) return httpFailure(response);
     const payload = await jsonBody(response);
     const data = recordValue(payload.data);
+    const video = recordValue(payload.video ?? data.video);
     const id = stringValue(
-      payload.id ?? payload.request_id ?? data.id ?? data.request_id,
+      payload.id ??
+        payload.request_id ??
+        payload.task_id ??
+        data.id ??
+        data.request_id ??
+        data.task_id ??
+        video.id ??
+        video.request_id ??
+        video.task_id,
     );
-    const status = stringValue(payload.status ?? data.status)?.toLowerCase();
+    const status = stringValue(payload.status ?? data.status ?? video.status)?.toLowerCase();
     if (!id && mediaUrl(payload))
-      return this.download(baseUrl, mediaUrl(payload)!, secret, "video/mp4", allowExternalOutputUrl);
+      return this.download(
+        context.baseUrl,
+        mediaUrl(payload)!,
+        context.secret,
+        "video/mp4",
+        context.allowExternalOutputUrl,
+      );
     if (!id)
       return {
         status: "failed",
         retryable: false,
         errorCode: "PROVIDER_TASK_MISSING",
       };
+    if (["failed", "cancelled", "canceled", "expired"].includes(status || ""))
+      return {
+        status: "failed",
+        retryable: false,
+        errorCode:
+          status === "cancelled" || status === "canceled"
+            ? "PROVIDER_CANCELLED"
+            : status === "expired"
+              ? "PROVIDER_EXPIRED"
+              : "PROVIDER_FAILED",
+      };
     if (["completed", "succeeded", "done"].includes(status || ""))
-      return this.downloadCompletedVideo(baseUrl, id, payload, secret, allowExternalOutputUrl);
+      return this.downloadCompletedVideo(
+        context.baseUrl,
+        id,
+        payload,
+        context.secret,
+        context.allowExternalOutputUrl,
+      );
     return {
       status: "pending",
       providerTaskId: id,
-      progress: numberValue(payload.progress ?? data.progress) ?? 0,
+      progress: numberValue(payload.progress ?? data.progress ?? video.progress) ?? 0,
     };
   }
 
@@ -319,10 +372,7 @@ export class HttpGenerationProvider implements GenerationProvider {
 
   private async providerContext(
     generation: GenerationRecord,
-  ): Promise<
-    | { baseUrl: string; secret: string; allowExternalOutputUrl: boolean }
-    | undefined
-  > {
+  ): Promise<ProviderContext | undefined> {
     const provider = await this.providers.get(
       generation.accountId,
       generation.providerId,
@@ -333,6 +383,7 @@ export class HttpGenerationProvider implements GenerationProvider {
         baseUrl: provider.baseUrl || this.baseUrl,
         secret: this.secretBox.decrypt(provider.secret),
         allowExternalOutputUrl: Boolean(provider.sub2ApiKeyId),
+        protocol: provider.sub2ApiKeyId ? "sub2api" : "openai-compatible",
       };
     } catch {
       return undefined;
@@ -343,7 +394,12 @@ export class HttpGenerationProvider implements GenerationProvider {
     baseUrl: string,
     path: string,
     secret: string,
-    options: { method?: string; body?: unknown; withAuthorization?: boolean } = {},
+    options: {
+      method?: string;
+      body?: unknown;
+      withAuthorization?: boolean;
+      idempotencyKey?: string;
+    } = {},
   ): Promise<Response> {
     const controller =
       this.timeoutMs && this.timeoutMs > 0 ? new AbortController() : undefined;
@@ -360,6 +416,9 @@ export class HttpGenerationProvider implements GenerationProvider {
             ...(options.withAuthorization === false || !secret
               ? {}
               : { Authorization: `Bearer ${secret}` }),
+            ...(options.idempotencyKey
+              ? { "Idempotency-Key": options.idempotencyKey }
+              : {}),
             ...(options.body ? { "Content-Type": "application/json" } : {}),
           },
           ...(options.body ? { body: JSON.stringify(options.body) } : {}),
@@ -379,8 +438,10 @@ export class HttpGenerationProvider implements GenerationProvider {
 async function httpFailure(response: Response): Promise<ProviderResult> {
   const payload = await jsonBody(response);
   const error = recordValue(payload.error);
-  const errorType = stringValue(error.type ?? payload.type ?? payload.code);
-  if (errorType === "grok_media_no_eligible_account") {
+  const errorType = stringValue(
+    error.code ?? error.type ?? payload.code ?? payload.type,
+  );
+  if (errorType && /(?:grok_media_)?no_eligible_account/i.test(errorType)) {
     return {
       status: "failed",
       retryable: false,
@@ -388,13 +449,32 @@ async function httpFailure(response: Response): Promise<ProviderResult> {
     };
   }
 
+  const retryable = booleanValue(error.retryable ?? payload.retryable);
+  if (retryable === false) {
+    return {
+      status: "failed",
+      retryable: false,
+      errorCode: upstreamErrorCode(errorType, response.status),
+    };
+  }
+
   return {
     status: "failed",
     retryable:
-      response.status === 408 || response.status === 425 || response.status === 429 || response.status >= 500,
+      retryable ??
+      (response.status === 408 ||
+        response.status === 425 ||
+        response.status === 429 ||
+        response.status >= 500),
     errorCode: `UPSTREAM_HTTP_${response.status}`,
   };
 }
+
+function upstreamErrorCode(errorType: string | undefined, status: number): string {
+  const normalized = errorType?.toUpperCase().replace(/[^A-Z0-9_]+/g, "_").slice(0, 80);
+  return normalized ? `UPSTREAM_${normalized}` : `UPSTREAM_HTTP_${status}`;
+}
+
 async function jsonBody(response: Response): Promise<Record<string, unknown>> {
   try {
     const value: unknown = await response.json();
@@ -435,6 +515,13 @@ function recordValue(value: unknown): Record<string, unknown> {
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
+function booleanValue(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") return value;
+  if (typeof value !== "string") return undefined;
+  if (value.trim().toLowerCase() === "true") return true;
+  if (value.trim().toLowerCase() === "false") return false;
+  return undefined;
+}
 function numberValue(value: unknown): number | undefined {
   const number = Number(value);
   return Number.isFinite(number) ? number : undefined;
@@ -450,6 +537,12 @@ function mediaUrl(payload: Record<string, unknown>): string | undefined {
     !Array.isArray(payload.video)
       ? (payload.video as Record<string, unknown>)
       : undefined;
+  const nestedDataVideo =
+    data?.video &&
+    typeof data.video === "object" &&
+    !Array.isArray(data.video)
+      ? (data.video as Record<string, unknown>)
+      : undefined;
   return stringValue(
     payload.url ??
       payload.video_url ??
@@ -459,7 +552,10 @@ function mediaUrl(payload: Record<string, unknown>): string | undefined {
       data?.result_url ??
       video?.url ??
       video?.video_url ??
-      video?.result_url,
+      video?.result_url ??
+      nestedDataVideo?.url ??
+      nestedDataVideo?.video_url ??
+      nestedDataVideo?.result_url,
   );
 }
 

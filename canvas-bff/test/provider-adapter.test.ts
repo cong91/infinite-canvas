@@ -296,6 +296,169 @@ test("video adapter follows Sub2API request_id and done response", async () => {
   ]);
 });
 
+test("Sub2API video adapter sends a canonical intent without model-specific routing", async () => {
+  const { providers, provider } = fixture(undefined, "sub2api-video-key");
+  const requests: Request[] = [];
+  const adapter = new HttpGenerationProvider({
+    baseUrl: "https://sub2api.example.test",
+    providers,
+    secretBox,
+    fetchImpl: async (input, init) => {
+      const request = new Request(input, init);
+      requests.push(request);
+      if (request.url.endsWith("/v1/videos/generations"))
+        return new Response(JSON.stringify({ request_id: "grok-task-canonical" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      if (request.url.endsWith("/v1/videos/grok-task-canonical"))
+        return new Response(
+          JSON.stringify({
+            status: "done",
+            video: { url: "https://cdn.x.ai/video.mp4" },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      return new Response(new Uint8Array([1, 2, 3]), {
+        status: 200,
+        headers: { "Content-Type": "video/mp4" },
+      });
+    },
+  });
+  const generation = {
+    id: "generation-canonical-video",
+    accountId: "account-a",
+    projectId: "project-1",
+    providerId: provider.id,
+    kind: "video" as const,
+    input: {
+      prompt: "a moving tree",
+      model: "grok-imagine-video-1.5",
+      seconds: "8",
+      size: "1280x720",
+      quality: "720",
+      generateAudio: "true",
+      watermark: "false",
+    },
+    inputHash: "hash-canonical-video",
+    clientRequestId: "request-canonical-video",
+    status: "running" as const,
+    progress: 0,
+    attempt: 0,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  assert.deepEqual(await adapter.start(generation), {
+    status: "pending",
+    providerTaskId: "grok-task-canonical",
+    progress: 0,
+  });
+  const body = (await requests[0].json()) as Record<string, unknown>;
+  assert.deepEqual(body, {
+    model: "grok-imagine-video-1.5",
+    prompt: "a moving tree",
+    duration: 8,
+    resolution: "720p",
+    aspect_ratio: "16:9",
+    generate_audio: true,
+    watermark: false,
+  });
+  const completed = await adapter.poll({ ...generation, providerTaskId: "grok-task-canonical" });
+  assert.equal(completed.status, "succeeded");
+  assert.deepEqual(
+    requests.map((request) => request.url),
+    [
+      "https://sub2api.example.test/v1/videos/generations",
+      "https://sub2api.example.test/v1/videos/grok-task-canonical",
+      "https://cdn.x.ai/video.mp4",
+    ],
+  );
+  assert.equal(requests[2].headers.has("authorization"), false);
+});
+
+test("video adapter accepts nested request IDs returned by Sub2API", async () => {
+  const { providers, provider } = fixture(undefined, "sub2api-video-key-nested");
+  const requests: Request[] = [];
+  const adapter = new HttpGenerationProvider({
+    baseUrl: "https://sub2api.example.test",
+    providers,
+    secretBox,
+    fetchImpl: async (input, init) => {
+      const request = new Request(input, init);
+      requests.push(request);
+      if (request.url.endsWith("/v1/videos/generations"))
+        return new Response(JSON.stringify({ video: { request_id: "nested-task" } }), { status: 200 });
+      if (request.url.endsWith("/v1/videos/nested-task"))
+        return new Response(JSON.stringify({ data: { video: { status: "done", url: "https://cdn.x.ai/nested.mp4" } } }), { status: 200 });
+      return new Response(new Uint8Array([1]), { status: 200, headers: { "Content-Type": "video/mp4" } });
+    },
+  });
+  const result = await adapter.start({
+    id: "generation-nested-task",
+    accountId: "account-a",
+    projectId: "project-1",
+    providerId: provider.id,
+    kind: "video",
+    input: { prompt: "nested", model: "grok-imagine-video" },
+    inputHash: "nested-hash",
+    clientRequestId: "nested-client-request",
+    status: "running",
+    progress: 0,
+    attempt: 0,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+  assert.deepEqual(result, { status: "pending", providerTaskId: "nested-task", progress: 0 });
+  assert.equal(requests[0].headers.get("idempotency-key"), "nested-client-request");
+  assert.equal((await adapter.poll({
+    id: "generation-nested-task",
+    accountId: "account-a",
+    projectId: "project-1",
+    providerId: provider.id,
+    kind: "video",
+    input: { prompt: "nested", model: "grok-imagine-video" },
+    inputHash: "nested-hash",
+    clientRequestId: "nested-client-request",
+    status: "provider_polling",
+    progress: 0,
+    providerTaskId: "nested-task",
+    attempt: 0,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  })).status, "succeeded");
+});
+
+test("adapter honors an explicit non-retryable Sub2API error contract", async () => {
+  const { providers, provider } = fixture(undefined, "sub2api-contract-error");
+  const adapter = new HttpGenerationProvider({
+    baseUrl: "https://sub2api.example.test",
+    providers,
+    secretBox,
+    fetchImpl: async () =>
+      new Response(JSON.stringify({ error: { code: "SUB2API_NO_ELIGIBLE_ACCOUNT", retryable: false } }), {
+        status: 503,
+        headers: { "Content-Type": "application/json" },
+      }),
+  });
+  const result = await adapter.start({
+    id: "generation-contract-error",
+    accountId: "account-a",
+    projectId: "project-1",
+    providerId: provider.id,
+    kind: "video",
+    input: { prompt: "contract", model: "grok-imagine-video" },
+    inputHash: "contract-hash",
+    clientRequestId: "contract-client-request",
+    status: "running",
+    progress: 0,
+    attempt: 0,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+  assert.deepEqual(result, { status: "failed", retryable: false, errorCode: "PROVIDER_NO_ELIGIBLE_ACCOUNT" });
+});
+
 test("video adapter treats expired and unknown statuses as terminal failures", async () => {
   const { providers, provider } = fixture();
   const adapter = new HttpGenerationProvider({

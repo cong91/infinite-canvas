@@ -46,7 +46,8 @@ export function CanvasProviderModelPicker({ capability, value, onChange, classNa
     );
     const compatibleProviders = useMemo(() => providers.filter((provider) => options.some((option) => option.provider.id === provider.id)), [options, providers]);
     const current = options.find((option) => encodeCanvasModel(option.provider.id, option.model) === value) || options.find((option) => option.provider.id === decodedValue?.providerId && option.model === decodedValue?.model);
-    const providerForSelection = current?.provider || providers.find((provider) => provider.id === (decodedValue?.providerId || selectedProviderId));
+    const selectedProvider = providers.find((provider) => provider.id === (decodedValue?.providerId || selectedProviderId));
+    const providerForSelection = current?.provider || (selectedProvider && compatibleProviders.some((provider) => provider.id === selectedProvider.id) ? selectedProvider : compatibleProviders[0]);
     const currentModelOptions = options.filter((item) => item.provider.id === providerForSelection?.id);
     const selectedValue = current ? encodeCanvasModel(current.provider.id, current.model) : "";
     const providerLoadError = Boolean(error && !providers.length);

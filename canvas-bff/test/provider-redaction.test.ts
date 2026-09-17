@@ -49,3 +49,30 @@ test("catalog adapter lists provider models with the provider secret", async () 
     });
     assert.deepEqual(await adapter.listModels("sk-provider-secret"), ["gpt-image-1", "grok-imagine-video"]);
 });
+
+test("catalog adapter flattens nested provider references without object stringification", async () => {
+    const adapter = new Sub2ApiCatalogAdapter("https://sub2api.example.test", async (input) => {
+        const path = new URL(String(input)).pathname;
+        const data = path === "/api/v1/keys"
+            ? [{
+                id: { id: "key-nested", name: "Grok video" },
+                name: "Grok video",
+                provider: { id: "grok", name: "xAI" },
+                group: { id: 42, name: "grok-video" },
+                channel: { id: 9, name: "xai-primary" },
+                key: "sk-nested-secret",
+            }]
+            : [{ id: 42, name: "grok-video", provider: { id: "grok", name: "xAI" } }];
+
+        return new Response(JSON.stringify({ data }), { status: 200 });
+    });
+
+    const catalog = await adapter.listCatalog("fixture-token");
+    assert.equal(catalog.keys[0].providerType, "xAI");
+    assert.equal(catalog.keys[0].id, "key-nested");
+    assert.equal(catalog.keys[0].group, "grok-video");
+    assert.equal(catalog.keys[0].channel, "xai-primary");
+    assert.equal(JSON.stringify(catalog).includes("[object Object]"), false);
+    const resolved = await adapter.getApiKeySecret("fixture-token", "key-nested");
+    assert.equal(resolved.secret, "sk-nested-secret");
+});

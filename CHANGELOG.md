@@ -3,6 +3,8 @@
 ## Unreleased
 
 - [修复] Video BFF nhận diện lỗi Sub2API không có tài khoản Grok đủ điều kiện là lỗi kết thúc và hiển thị thông báo thay vì retry vô hạn.
+- [修复] Canvas BFF chuẩn hóa input video thành Generation Intent và gửi qua hợp đồng `/v1/videos/generations`, giữ việc chọn group/model ở Sub2API thay vì hard-code từng upstream.
+- [修复] Canvas provider picker tự chuyển sang provider có model phù hợp khi đổi capability, tránh giữ provider cũ khiến danh sách model video bị trống.
 - [修复] OVH media proxy ẩn CORS headers từ MinIO trước khi thêm policy chuẩn, tránh `Access-Control-Allow-Origin` bị trả trùng khiến ảnh tạo xong không tải được.
 - [修复] Gộp request provider/model đang chạy và chỉ tải lại khi cần, để các select Studio không bị khóa bởi vòng lặp request.
 - [修复] Canvas Studio provider/model picker mở và chọn được trong Settings, Studio và Canvas; popup không còn bị label kích hoạt kép hoặc lớp canvas che khuất.

@@ -58,7 +58,9 @@ export class Sub2ApiCatalogAdapter {
 
     async getApiKeySecret(accessToken: string, keyId: string): Promise<{ secret: string; item: ProviderCatalogItem }> {
         const records = await this.listPath("/api/v1/keys", accessToken);
-        const match = records.find((item) => String(item.id ?? item.key_id ?? item.keyId ?? "") === keyId);
+        const match = records.find(
+            (item) => asString(item.id ?? item.key_id ?? item.keyId, ["id", "name"]) === keyId,
+        );
         if (!match) throw new HttpError(404, "SUB2API_KEY_NOT_FOUND", "Sub2API API key was not found");
         const secret = asString(match.key ?? match.api_key ?? match.apiKey);
         if (!secret) throw new HttpError(502, "SUB2API_INVALID_RESPONSE", "Sub2API API key response is missing a key");
@@ -113,7 +115,7 @@ export class Sub2ApiCatalogAdapter {
 }
 
 function normalizeCatalogItem(value: Record<string, unknown>, keyRecord = false): ProviderCatalogItem {
-    const id = asString(value.id ?? value.key_id ?? value.keyId ?? value.name) ?? "unknown";
+    const id = asString(value.id ?? value.key_id ?? value.keyId ?? value.name, ["id", "name"]) ?? "unknown";
     const secret = keyRecord ? asString(value.key ?? value.api_key ?? value.apiKey) : undefined;
     return {
         id,
@@ -132,8 +134,17 @@ function asRecords(value: unknown): Record<string, unknown>[] {
     return Array.isArray(source) ? source.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object" && !Array.isArray(item))) : [];
 }
 
-function asString(value: unknown): string | undefined {
-    return typeof value === "string" && value.trim() ? value.trim() : value === undefined || value === null ? undefined : String(value);
+function asString(value: unknown, objectKeys = ["name", "label", "display_name", "displayName", "value", "id", "key", "code", "slug"]): string | undefined {
+    if (typeof value === "string") return value.trim() || undefined;
+    if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") return String(value);
+    if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+
+    const record = value as Record<string, unknown>;
+    for (const key of objectKeys) {
+        const nested = asString(record[key], objectKeys);
+        if (nested) return nested;
+    }
+    return undefined;
 }
 
 function modelNames(value: unknown): string[] {
