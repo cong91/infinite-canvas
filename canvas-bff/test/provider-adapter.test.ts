@@ -372,6 +372,47 @@ test("adapter marks upstream rate limits retryable without exposing secrets", as
   });
 });
 
+test("video adapter treats an unavailable Grok media account pool as terminal", async () => {
+  const { providers, provider } = fixture();
+  const adapter = new HttpGenerationProvider({
+    baseUrl: "https://sub2api.example.test",
+    providers,
+    secretBox,
+    fetchImpl: async () =>
+      new Response(
+        JSON.stringify({
+          error: {
+            type: "grok_media_no_eligible_account",
+            message: "No eligible Grok media accounts",
+          },
+        }),
+        { status: 503, headers: { "Content-Type": "application/json" } },
+      ),
+  });
+
+  const result = await adapter.start({
+    id: "generation-no-grok-account",
+    accountId: "account-a",
+    projectId: "project-1",
+    providerId: provider.id,
+    kind: "video",
+    input: { prompt: "a moving tree", model: "grok-imagine-video" },
+    inputHash: "hash-no-grok-account",
+    clientRequestId: "request-no-grok-account",
+    status: "running",
+    progress: 0,
+    attempt: 0,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+
+  assert.deepEqual(result, {
+    status: "failed",
+    retryable: false,
+    errorCode: "PROVIDER_NO_ELIGIBLE_ACCOUNT",
+  });
+});
+
 test("adapter rejects media URLs outside the configured Sub2API origin", async () => {
   const { providers, provider } = fixture();
   const adapter = new HttpGenerationProvider({

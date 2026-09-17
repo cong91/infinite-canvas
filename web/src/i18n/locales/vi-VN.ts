@@ -215,6 +215,7 @@ export default {
         videoTaskCreateFailed: "Không thể tạo tác vụ video",
         videoGenerationFailed: "Tạo video thất bại",
         videoTaskQueryFailed: "Không thể truy vấn tác vụ video",
+        noEligibleVideoAccount: "Nhà cung cấp hiện không có tài khoản đủ điều kiện tạo video. Hãy chọn model khác hoặc thử lại sau.",
         videoPromptRequired: "Nhập prompt video hoặc kết nối ảnh, video hay âm thanh tham chiếu",
         referenceImageReadFailed: "Không thể đọc ảnh tham chiếu. Hãy chọn ảnh khác hoặc tải lại.",
         invalidReferenceVideo: "Video tham chiếu phải là URL công khai, asset ID hoặc video đã lưu cục bộ",

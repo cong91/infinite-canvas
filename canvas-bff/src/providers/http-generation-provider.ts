@@ -67,7 +67,7 @@ export class HttpGenerationProvider implements GenerationProvider {
       `/v1/videos/${encodeURIComponent(generation.providerTaskId)}`,
       context.secret,
     );
-    if (!response.ok) return httpFailure(response.status);
+    if (!response.ok) return httpFailure(response);
     const payload = await jsonBody(response);
     const data = recordValue(payload.data);
     const status = stringValue(payload.status ?? data.status)?.toLowerCase();
@@ -130,7 +130,7 @@ export class HttpGenerationProvider implements GenerationProvider {
         response_format: "b64_json",
       },
     });
-    if (!response.ok) return httpFailure(response.status);
+    if (!response.ok) return httpFailure(response);
     const payload = await jsonBody(response);
     const first = arrayValue(payload.data)[0];
     const encoded = stringValue(first?.b64_json ?? first?.base64);
@@ -164,7 +164,7 @@ export class HttpGenerationProvider implements GenerationProvider {
         response_format: inputString(generation, "format") || "mp3",
       },
     });
-    if (!response.ok) return httpFailure(response.status);
+    if (!response.ok) return httpFailure(response);
     return {
       status: "succeeded",
       data: Buffer.from(await response.arrayBuffer()),
@@ -188,7 +188,7 @@ export class HttpGenerationProvider implements GenerationProvider {
         size: inputString(generation, "size") || undefined,
       },
     });
-    if (!response.ok) return httpFailure(response.status);
+    if (!response.ok) return httpFailure(response);
     const payload = await jsonBody(response);
     const data = recordValue(payload.data);
     const id = stringValue(
@@ -226,7 +226,7 @@ export class HttpGenerationProvider implements GenerationProvider {
         ],
       },
     });
-    if (!response.ok) return httpFailure(response.status);
+    if (!response.ok) return httpFailure(response);
     const payload = await jsonBody(response);
     const firstChoice = arrayValue(payload.choices)[0];
     const message = recordValue(firstChoice?.message);
@@ -263,7 +263,7 @@ export class HttpGenerationProvider implements GenerationProvider {
     const response = await this.request(baseUrl, url, secret, {
       withAuthorization: !isExternal,
     });
-    if (!response.ok) return httpFailure(response.status);
+    if (!response.ok) return httpFailure(response);
     return {
       status: "succeeded",
       data: Buffer.from(await response.arrayBuffer()),
@@ -376,12 +376,23 @@ export class HttpGenerationProvider implements GenerationProvider {
   }
 }
 
-function httpFailure(status: number): ProviderResult {
+async function httpFailure(response: Response): Promise<ProviderResult> {
+  const payload = await jsonBody(response);
+  const error = recordValue(payload.error);
+  const errorType = stringValue(error.type ?? payload.type ?? payload.code);
+  if (errorType === "grok_media_no_eligible_account") {
+    return {
+      status: "failed",
+      retryable: false,
+      errorCode: "PROVIDER_NO_ELIGIBLE_ACCOUNT",
+    };
+  }
+
   return {
     status: "failed",
     retryable:
-      status === 408 || status === 425 || status === 429 || status >= 500,
-    errorCode: `UPSTREAM_HTTP_${status}`,
+      response.status === 408 || response.status === 425 || response.status === 429 || response.status >= 500,
+    errorCode: `UPSTREAM_HTTP_${response.status}`,
   };
 }
 async function jsonBody(response: Response): Promise<Record<string, unknown>> {

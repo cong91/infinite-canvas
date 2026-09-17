@@ -31,6 +31,8 @@ The current release needs manual verification in these areas:
 
 - Sub2API video contract: with a real async video task, verify the BFF accepts `request_id`, keeps polling `pending`/`processing`, treats `done` as completion, treats `expired` as a terminal failure, and downloads external result URLs through `/v1/videos/:request_id/content`. Verify a long-running generation is not cut off by an arbitrary 30-second adapter timeout.
 
+- Sub2API video capacity failure: when `/v1/videos` returns `grok_media_no_eligible_account`, verify the generation becomes a visible terminal error instead of re-entering the queue; Video Studio should show localized guidance to choose another model or retry later.
+
 - BFF Docker persistence: run `docker compose -f docker-compose.bff.local.yml -p infinite-canvas-bff up -d --build`, then `powershell -ExecutionPolicy Bypass -File scripts/smoke-bff-stack.ps1` and `canvas-bff`'s `npm run test:integration` with the documented connection variables. Confirm PostgreSQL migrations, MinIO health, BFF readiness, durable workspace records, the worker output path, and a signed media URL fetch.
 
 - Canvas media retention: set `CANVAS_STORAGE_RETENTION_MAX_BYTES` in the BFF environment, create enough generated media to exceed the cap, and verify the oldest objects are removed from MinIO together with their `canvas_assets` rows. Confirm the newly completed generation remains available, a single object larger than the cap is retained, and cleanup failures are logged without failing the completed generation.

@@ -1,5 +1,6 @@
 import { nanoid } from "nanoid";
 
+import i18n from "@/i18n";
 import { useCanvasAccountStore } from "@/stores/use-canvas-account-store";
 import { useCanvasProviderStore } from "@/stores/use-canvas-provider-store";
 import { modelOptionName, type AiConfig } from "@/stores/use-config-store";
@@ -46,11 +47,16 @@ export async function waitForCanvasGeneration(generationId: string, options?: { 
         throwIfAborted(options?.signal);
         const generation = await canvasBff.getGeneration(generationId);
         if (["succeeded", "failed", "cancelled"].includes(generation.status)) {
-            if (generation.status !== "succeeded") throw new Error(generation.errorCode || "Canvas generation failed");
+            if (generation.status !== "succeeded") throw new Error(canvasGenerationError(generation.errorCode));
             return generation;
         }
         await delay(1_000, options?.signal);
     }
+}
+
+function canvasGenerationError(errorCode?: string) {
+    if (errorCode === "PROVIDER_NO_ELIGIBLE_ACCOUNT") return i18n.t("apiErrors.noEligibleVideoAccount");
+    return errorCode || i18n.t("apiErrors.videoGenerationFailed");
 }
 
 export async function readCanvasGenerationBlob(generation: CanvasGeneration, options?: { signal?: AbortSignal }) {
