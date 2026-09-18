@@ -45,3 +45,31 @@ test("retries a project update once with the latest revision", async () => {
     expect(saved.title).toBe("Renamed");
     expect(saved.remoteRevision).toBe(8);
 });
+
+test("serializes concurrent updates for the same project", async () => {
+    const { updateCanvasProject } = await import("../src/services/api/canvas-workspace");
+    let revision = 1;
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const client = {
+        getProject: async () => ({ id: "project-2", name: "Canvas", data: {}, revision, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" }),
+        updateProject: async (_id: string, input: { name?: string; data?: Record<string, unknown>; revision?: number }) => {
+            inFlight += 1;
+            maxInFlight = Math.max(maxInFlight, inFlight);
+            await new Promise((resolve) => setTimeout(resolve, 5));
+            if (input.revision !== revision) {
+                inFlight -= 1;
+                throw new Error("unexpected stale revision");
+            }
+            revision += 1;
+            inFlight -= 1;
+            return { id: "project-2", name: input.name || "Canvas", data: input.data || {}, revision, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" };
+        },
+    };
+
+    const saved = await Promise.all([updateCanvasProject("project-2", { name: "First", revision: 1 }, client), updateCanvasProject("project-2", { name: "Second", revision: 1 }, client)]);
+
+    expect(maxInFlight).toBe(1);
+    expect(saved.map((project) => project.title)).toEqual(["First", "Second"]);
+    expect(saved.map((project) => project.remoteRevision)).toEqual([2, 3]);
+});

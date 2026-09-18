@@ -12,6 +12,7 @@ export type CanvasProjectInput = {
 
 export type CanvasProjectPatch = Partial<CanvasProjectInput> & { revision?: number };
 type CanvasProjectClient = Pick<typeof canvasBff, "getProject" | "updateProject">;
+const projectUpdateQueues = new Map<string, Promise<LocalCanvasProject>>();
 
 /** Serialize the local canvas shape without making the BFF understand canvas internals. */
 export function toBffCanvasProject(project: LocalCanvasProject): CanvasProjectInput {
@@ -46,15 +47,25 @@ export function fromBffCanvasProject(remote: BffCanvasProject): LocalCanvasProje
 
 /** Update once more against the latest revision when another tab saved first. */
 export async function updateCanvasProject(projectId: string, input: CanvasProjectPatch, client: CanvasProjectClient = canvasBff): Promise<LocalCanvasProject> {
-    let remote: BffCanvasProject;
-    try {
-        remote = await client.updateProject(projectId, input);
-    } catch (error) {
-        if (!(error instanceof CanvasBffError) || error.code !== "PROJECT_REVISION_CONFLICT") throw error;
-        const latest = await client.getProject(projectId);
-        remote = await client.updateProject(projectId, { ...input, revision: latest.revision });
-    }
-    return fromBffCanvasProject(remote);
+    const previous = projectUpdateQueues.get(projectId) || Promise.resolve();
+    const current = previous.catch(() => undefined).then(async () => {
+        const previousProject = await previous.catch(() => undefined);
+        const revision = previousProject?.remoteRevision !== undefined && (input.revision === undefined || input.revision <= previousProject.remoteRevision) ? previousProject.remoteRevision : input.revision;
+        const requestInput = revision === undefined ? input : { ...input, revision };
+        let remote: BffCanvasProject;
+        try {
+            remote = await client.updateProject(projectId, requestInput);
+        } catch (error) {
+            if (!(error instanceof CanvasBffError) || error.code !== "PROJECT_REVISION_CONFLICT") throw error;
+            const latest = await client.getProject(projectId);
+            remote = await client.updateProject(projectId, { ...input, revision: latest.revision });
+        }
+        return fromBffCanvasProject(remote);
+    });
+    projectUpdateQueues.set(projectId, current);
+    return current.finally(() => {
+        if (projectUpdateQueues.get(projectId) === current) projectUpdateQueues.delete(projectId);
+    });
 }
 
 export async function saveCanvasProject(project: LocalCanvasProject): Promise<LocalCanvasProject> {
