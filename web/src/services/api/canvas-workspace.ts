@@ -1,4 +1,4 @@
-import { canvasBff, type CanvasProject as BffCanvasProject } from "@/services/api/canvas-bff";
+import { canvasBff, CanvasBffError, type CanvasProject as BffCanvasProject } from "@/services/api/canvas-bff";
 import type { CanvasBackgroundMode } from "@/lib/canvas-theme";
 import type { CanvasProject as LocalCanvasProject } from "@/stores/canvas/use-canvas-store";
 import type { CanvasAssistantSession, CanvasConnection, CanvasNodeData, ViewportTransform } from "@/types/canvas";
@@ -9,6 +9,9 @@ export type CanvasProjectInput = {
     name: string;
     data: Record<string, unknown>;
 };
+
+export type CanvasProjectPatch = Partial<CanvasProjectInput> & { revision?: number };
+type CanvasProjectClient = Pick<typeof canvasBff, "getProject" | "updateProject">;
 
 /** Serialize the local canvas shape without making the BFF understand canvas internals. */
 export function toBffCanvasProject(project: LocalCanvasProject): CanvasProjectInput {
@@ -41,10 +44,22 @@ export function fromBffCanvasProject(remote: BffCanvasProject): LocalCanvasProje
     };
 }
 
+/** Update once more against the latest revision when another tab saved first. */
+export async function updateCanvasProject(projectId: string, input: CanvasProjectPatch, client: CanvasProjectClient = canvasBff): Promise<LocalCanvasProject> {
+    let remote: BffCanvasProject;
+    try {
+        remote = await client.updateProject(projectId, input);
+    } catch (error) {
+        if (!(error instanceof CanvasBffError) || error.code !== "PROJECT_REVISION_CONFLICT") throw error;
+        const latest = await client.getProject(projectId);
+        remote = await client.updateProject(projectId, { ...input, revision: latest.revision });
+    }
+    return fromBffCanvasProject(remote);
+}
+
 export async function saveCanvasProject(project: LocalCanvasProject): Promise<LocalCanvasProject> {
     const payload = toBffCanvasProject(project);
-    const remote = await canvasBff.updateProject(project.id, { ...payload, ...(project.remoteRevision !== undefined ? { revision: project.remoteRevision } : {}) });
-    return fromBffCanvasProject(remote);
+    return updateCanvasProject(project.id, { ...payload, ...(project.remoteRevision !== undefined ? { revision: project.remoteRevision } : {}) });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

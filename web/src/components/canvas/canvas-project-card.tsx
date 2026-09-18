@@ -7,7 +7,7 @@ import { useCanvasStore, type CanvasProject } from "@/stores/canvas/use-canvas-s
 import { useCanvasUiStore } from "@/stores/canvas/use-canvas-ui-store";
 import { exportCanvasProjects } from "@/lib/canvas/canvas-export";
 import { hasAgentUrlBootstrap } from "@/lib/agent/agent-url-bootstrap";
-import { canvasBff } from "@/services/api/canvas-bff";
+import { updateCanvasProject } from "@/services/api/canvas-workspace";
 import { useCanvasAccountStore } from "@/stores/use-canvas-account-store";
 
 export function CanvasProjectCard({ project }: { project: CanvasProject }) {
@@ -38,8 +38,8 @@ export function CanvasProjectCard({ project }: { project: CanvasProject }) {
         stopEditing();
         if (accountStatus === "authenticated") {
             try {
-                const saved = await canvasBff.updateProject(project.id, { name: nextTitle, ...(project.remoteRevision !== undefined ? { revision: project.remoteRevision } : {}) });
-                useCanvasStore.getState().updateProject(project.id, { remoteRevision: saved.revision });
+                const saved = await updateCanvasProject(project.id, { name: nextTitle, ...(project.remoteRevision !== undefined ? { revision: project.remoteRevision } : {}) });
+                useCanvasStore.getState().updateProject(project.id, { remoteRevision: saved.remoteRevision });
             } catch (error) {
                 message.error(error instanceof Error ? error.message : t("canvas.project.renameFailed", { defaultValue: "Canvas name could not be saved" }));
             }
