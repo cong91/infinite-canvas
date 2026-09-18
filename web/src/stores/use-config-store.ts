@@ -4,6 +4,7 @@ import { persist } from "zustand/middleware";
 import { nanoid } from "nanoid";
 
 import i18n from "@/i18n";
+import { decodeCanvasModel } from "@/services/api/canvas-bff";
 import { isCanvasAccountBacked } from "@/stores/canvas/account-runtime";
 
 export type ApiCallFormat = "openai" | "gemini";
@@ -200,7 +201,9 @@ export function resolveModelScript(config: AiConfig, value: string) {
 }
 
 function isAiConfigReady(config: AiConfig, model: string) {
-    if (isCanvasAccountBacked()) return Boolean(model.trim());
+    const canvasModel = decodeCanvasModel(model);
+    if (isCanvasAccountBacked()) return Boolean(canvasModel);
+    if (canvasModel) return false;
     const channel = resolveModelChannel(config, model);
     return Boolean(model.trim() && channel.baseUrl.trim() && channel.apiKey.trim());
 }
@@ -407,6 +410,8 @@ export function modelOptionsFromChannels(channels: ModelChannel[]) {
 export function normalizeModelOptionValue(value: string | undefined, channels: ModelChannel[]) {
     const model = (value || "").trim();
     if (!model) return "";
+    // Canvas provider-model pairs are validated by the BFF, not by local channels.
+    if (decodeCanvasModel(model)) return model;
     const decoded = decodeChannelModel(model);
     if (decoded) {
         const channel = channels.find((item) => item.id === decoded.channelId);

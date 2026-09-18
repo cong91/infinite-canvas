@@ -311,8 +311,10 @@ export default function ImagePage() {
         setReferences(log.references || []);
         const selectedModel = log.config.imageModel || log.model;
         if (selectedModel) {
-            if (accountStatus === "authenticated") setStudioModel("image", selectedModel);
-            else updateConfig("imageModel", selectedModel);
+            if (accountStatus === "authenticated") {
+                setStudioModel("image", selectedModel);
+                updateConfig("imageModel", selectedModel);
+            } else updateConfig("imageModel", selectedModel);
         }
         if (log.config.quality) updateConfig("quality", log.config.quality);
         if (log.config.size) updateConfig("size", log.config.size);
@@ -590,7 +592,15 @@ function GenerationSettings({ config, model, updateConfig, openConfigDialog }: {
             <div className="col-span-2 block min-w-0 sm:col-span-1">
                 <span className="mb-1.5 block text-sm font-semibold sm:mb-2 sm:text-base">{t("workbench.model")}</span>
                 {accountStatus === "authenticated" ? (
-                    <CanvasProviderModelPicker capability="image" value={model} showLabels onChange={(value) => setStudioModel("image", value)} />
+                    <CanvasProviderModelPicker
+                        capability="image"
+                        value={model}
+                        showLabels
+                        onChange={(value) => {
+                            setStudioModel("image", value);
+                            updateConfig("imageModel", value);
+                        }}
+                    />
                 ) : (
                     <ModelPicker config={config} value={model} onChange={(value) => updateConfig("imageModel", value)} capability="image" fullWidth onMissingConfig={() => openConfigDialog(false)} />
                 )}

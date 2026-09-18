@@ -77,6 +77,7 @@ export const useCanvasAccountStore = create<CanvasAccountStore>()((set, get) => 
     sessionExpiresAt: null,
     error: null,
     initialize: async () => {
+        setCanvasAccountAuthenticated(false);
         set({ status: "loading", error: null });
         try {
             const session = await canvasBff.getSession();
@@ -92,12 +93,14 @@ export const useCanvasAccountStore = create<CanvasAccountStore>()((set, get) => 
                 set({ status: "unauthenticated", account: null, sessionExpiresAt: null, error: null });
                 return;
             }
+            setCanvasAccountAuthenticated(false);
             set({ status: "error", error: error instanceof Error ? error.message : "Canvas session could not be loaded" });
         }
     },
     verify: async (launchCode) => {
         const code = launchCode.trim();
         if (!code) return false;
+        setCanvasAccountAuthenticated(false);
         set({ status: "loading", error: null });
         try {
             const session = await canvasBff.exchangeSub2ApiLaunchCode(code);

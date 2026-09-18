@@ -25,6 +25,24 @@ test("does not treat a local model fallback as a Canvas model", async () => {
     expect(decodeCanvasModel("canvas::text-provider::gpt-5.5")).toEqual({ providerId: "text-provider", model: "gpt-5.5" });
 });
 
+test("requires a Canvas provider model only while the account session is active", async () => {
+    const { defaultConfig, useConfigStore } = await import("../src/stores/use-config-store");
+    const { setCanvasAccountAuthenticated } = await import("../src/stores/canvas/account-runtime");
+    const localConfig = { ...defaultConfig, channels: defaultConfig.channels.map((channel) => ({ ...channel, apiKey: "test-key" })) };
+
+    try {
+        setCanvasAccountAuthenticated(true);
+        expect(useConfigStore.getState().isAiConfigReady(defaultConfig, "default::gpt-5.5")).toBe(false);
+        expect(useConfigStore.getState().isAiConfigReady(defaultConfig, "canvas::text-provider::gpt-5.5")).toBe(true);
+
+        setCanvasAccountAuthenticated(false);
+        expect(useConfigStore.getState().isAiConfigReady(localConfig, "default::gpt-5.5")).toBe(true);
+        expect(useConfigStore.getState().isAiConfigReady(localConfig, "canvas::text-provider::gpt-5.5")).toBe(false);
+    } finally {
+        setCanvasAccountAuthenticated(false);
+    }
+});
+
 test("retries a project update once with the latest revision", async () => {
     const { CanvasBffError } = await import("../src/services/api/canvas-bff");
     const { updateCanvasProject } = await import("../src/services/api/canvas-workspace");

@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 
 import { formatPromptDate, type Prompt } from "@/services/api/prompts";
 import { translatePromptToVietnamese, type PromptTranslation } from "@/services/api/prompt-translation";
+import { isCanvasAccountAuthenticated } from "@/services/api/canvas-generation";
 import { useConfigStore } from "@/stores/use-config-store";
 
 export function PromptDetailDialog({ prompt, onClose, onCopy, onSaveAsset }: { prompt: Prompt | null; onClose: () => void; onCopy: (prompt: string) => void; onSaveAsset?: (prompt: Prompt) => void }) {
@@ -31,7 +32,7 @@ export function PromptDetailDialog({ prompt, onClose, onCopy, onSaveAsset }: { p
         if (!prompt || isTranslating) return;
         if (!isAiConfigReady(config, config.textModel)) {
             message.info(t("prompts.translationConfigRequired"));
-            openConfigDialog(false, "channels");
+            openConfigDialog(false, isCanvasAccountAuthenticated() ? "channels" : "preferences");
             return;
         }
         setIsTranslating(true);

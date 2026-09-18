@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- [修复] Canvas 添加“我的资产”后挂载提示面板不再触发 React 19 #185 无限更新错误。
+- [修复] Canvas 设置新增独立的文本/Prompt 翻译模型选择，并保留已保存的 Canvas 模型以支持越南语 Prompt 翻译。
+- [修复] Studio Image/Video 中选择的 Canvas provider/model 自动保存为默认值，刷新后仍可恢复。
 - [修复] Video BFF nhận diện lỗi Sub2API không có tài khoản Grok đủ điều kiện là lỗi kết thúc và hiển thị thông báo thay vì retry vô hạn.
 - [修复] Canvas BFF chuẩn hóa input video thành Generation Intent và gửi qua hợp đồng `/v1/videos/generations`, giữ việc chọn group/model ở Sub2API thay vì hard-code từng upstream.
 - [修复] Canvas provider picker tự chuyển sang provider có model phù hợp khi đổi capability, tránh giữ provider cũ khiến danh sách model video bị trống.
