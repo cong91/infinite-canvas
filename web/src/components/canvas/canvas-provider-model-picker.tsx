@@ -64,10 +64,13 @@ export function CanvasProviderModelPicker({ capability, value, onChange, classNa
     }, [current, onChange, selectedValue, value]);
 
     useEffect(() => {
-        if (!loadAttempted || providerLoading || modelLoading || error || !value || current) return;
+        // A freshly inserted asset can inherit the local config's plain model while the
+        // authenticated picker expects a Canvas-encoded value. Do not clear that fallback:
+        // the parent would immediately restore it and re-enter this effect forever.
+        if (!loadAttempted || providerLoading || modelLoading || error || !value || !decodedValue || current) return;
         normalizedValueRef.current = "";
         onChange("");
-    }, [current, error, loadAttempted, modelLoading, onChange, providerLoading, value]);
+    }, [current, decodedValue, error, loadAttempted, modelLoading, onChange, providerLoading, value]);
 
     const providerSelect = (
         <Select
