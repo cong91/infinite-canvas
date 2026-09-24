@@ -112,3 +112,36 @@ test("provider model route uses the stored secret server-side", async () => {
         await app.close();
     }
 });
+
+test("provider creation from a new Sub2API key creates the key upstream with the chosen group", async () => {
+    const requests: Request[] = [];
+    const sessions = new SessionService(new InMemorySessionRepository());
+    const catalog = new Sub2ApiCatalogAdapter(config.sub2ApiBaseUrl, async (input, init) => {
+        const request = new Request(input, init);
+        requests.push(request);
+        if (request.method === "POST" && request.url.endsWith("/api/v1/keys"))
+            return new Response(JSON.stringify({ data: { id: 77, name: "Infinite Canvas - image", key: "sk-new-key-secret", group_id: 5 } }), { status: 200, headers: { "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+    });
+    const app = await startTestApp(config, {
+        auth: { sub2ApiClient: new Sub2ApiClient(config.sub2ApiBaseUrl, async () => new Response(JSON.stringify({ data: { id: "key-create-user", username: "Key User", status: "active" } }), { status: 200 })), sessionService: sessions },
+        workspace: { providers: { catalog, secretBox: new ProviderSecretBox(Buffer.alloc(32, 5)), providers: new InMemoryProviderRepository() } },
+    });
+    try {
+        const account = await sessions.upsertAccount({ sub2ApiUserId: "key-create-user", displayName: "Key User", status: "active" });
+        const session = await sessions.createSession(account, "key-create-jwt");
+        const response = await fetch(`${app.url}/api/v1/providers/catalog/keys`, { method: "POST", headers: { Origin: config.canvasOrigin, Cookie: `canvas_session=${session.token}`, "Content-Type": "application/json" }, body: JSON.stringify({ name: "Infinite Canvas - image", groupId: "5" }) });
+        assert.equal(response.status, 201);
+        const body = await response.json() as { data: { name: string; group?: string; sub2ApiKeyId?: string; maskedKey: string } };
+        assert.equal(body.data.name, "Infinite Canvas - image");
+        assert.equal(body.data.group, "5");
+        assert.equal(body.data.sub2ApiKeyId, "77");
+        assert.equal(body.data.maskedKey, "****cret");
+        assert.equal(JSON.stringify(body).includes("sk-new-key-secret"), false);
+        const upstream = requests.find((request) => request.method === "POST" && request.url.endsWith("/api/v1/keys"));
+        assert.equal(upstream?.headers.get("authorization"), "Bearer key-create-jwt");
+        assert.deepEqual(await upstream?.json(), { name: "Infinite Canvas - image", group_id: 5 });
+    } finally {
+        await app.close();
+    }
+});

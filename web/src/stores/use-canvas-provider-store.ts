@@ -22,6 +22,7 @@ type CanvasProviderStore = {
     loadCatalog: (force?: boolean) => Promise<void>;
     loadModels: (providerId: string, force?: boolean) => Promise<string[]>;
     create: (input: ProviderInput) => Promise<CanvasProvider>;
+    createWithNewKey: (input: { name: string; groupId: string }) => Promise<CanvasProvider>;
     update: (providerId: string, input: ProviderPatch) => Promise<CanvasProvider>;
     remove: (providerId: string) => Promise<void>;
     select: (providerId: string) => void;
@@ -129,6 +130,11 @@ export const useCanvasProviderStore = create<CanvasProviderStore>()((set, get) =
     },
     create: async (input) => {
         const provider = await canvasBff.createProvider(input);
+        set((state) => ({ providers: [...state.providers.filter((item) => item.id !== provider.id), provider], error: null }));
+        return provider;
+    },
+    createWithNewKey: async (input) => {
+        const provider = await canvasBff.createProviderWithNewKey(input);
         set((state) => ({ providers: [...state.providers.filter((item) => item.id !== provider.id), provider], error: null }));
         return provider;
     },

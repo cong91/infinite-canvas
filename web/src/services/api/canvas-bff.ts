@@ -49,6 +49,10 @@ export type ProviderCatalogItem = {
     model?: string;
     group?: string;
     channel?: string;
+    platform?: string;
+    rateMultiplier?: number;
+    allowImageGeneration?: boolean;
+    videoCapable?: boolean;
     fingerprint?: string;
     maskedKey?: string;
     status?: string;
@@ -123,6 +127,7 @@ export const canvasBff = {
     listProviderModels: (providerId: string) => request<string[]>(`/v1/providers/${encodeURIComponent(providerId)}/models`),
     getProviderCatalog: () => request<ProviderCatalog>("/v1/providers/catalog"),
     createProvider: (input: { name: string; providerType?: string; baseUrl?: string; model?: string; group?: string; channel?: string; catalogKeyId?: string; secret?: string }) => request<CanvasProvider>("/v1/providers", { method: "POST", body: input }),
+    createProviderWithNewKey: (input: { name: string; groupId: string }) => request<CanvasProvider>("/v1/providers/catalog/keys", { method: "POST", body: input }),
     updateProvider: (providerId: string, input: { name?: string; model?: string; group?: string; channel?: string; status?: "active" | "disabled" }) =>
         request<CanvasProvider>(`/v1/providers/${encodeURIComponent(providerId)}`, { method: "PATCH", body: input }),
     deleteProvider: (providerId: string) => request<void>(`/v1/providers/${encodeURIComponent(providerId)}`, { method: "DELETE" }),

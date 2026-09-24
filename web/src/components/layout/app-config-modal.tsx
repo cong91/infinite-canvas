@@ -1,4 +1,4 @@
-import { App, Button, Form, Input, Modal, Progress, Select, Tabs } from "antd";
+import { App, Button, Form, Input, Modal, Progress, Segmented, Select, Tabs } from "antd";
 import type { TFunction } from "i18next";
 import { Cloud, Download, Pencil, Plus, RefreshCw, ShieldCheck, Trash2, Upload, Wifi } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -35,6 +35,8 @@ type ModelGroup = {
     modelKey: "imageModel" | "videoModel" | "textModel" | "audioModel";
     labelKey: string;
 };
+
+type KeyCapability = "image" | "video" | "text";
 
 type WebdavDomainProgress = {
     stage: string;
@@ -94,6 +96,7 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
     const loadCanvasCatalog = useCanvasProviderStore((state) => state.loadCatalog);
     const loadCanvasModels = useCanvasProviderStore((state) => state.loadModels);
     const createCanvasProvider = useCanvasProviderStore((state) => state.create);
+    const createCanvasProviderWithNewKey = useCanvasProviderStore((state) => state.createWithNewKey);
     const updateCanvasProvider = useCanvasProviderStore((state) => state.update);
     const [selectedCatalogKeyId, setSelectedCatalogKeyId] = useState("");
     const [canvasProviderName, setCanvasProviderName] = useState("");
@@ -101,6 +104,10 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
     const [canvasProviderBaseUrl, setCanvasProviderBaseUrl] = useState("");
     const [canvasProviderSecret, setCanvasProviderSecret] = useState("");
     const [savingCanvasProvider, setSavingCanvasProvider] = useState(false);
+    const [createKeyMode, setCreateKeyMode] = useState(false);
+    const [newKeyCapability, setNewKeyCapability] = useState<KeyCapability>("image");
+    const [newKeyGroupId, setNewKeyGroupId] = useState("");
+    const [newKeyName, setNewKeyName] = useState("");
     const locale = i18n.resolvedLanguage as AppLocale;
     useEffect(() => setActiveTab(initialTab), [initialTab]);
 
@@ -179,6 +186,40 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
             await updateCanvasProvider(providerId, { model });
         } catch (error) {
             message.error(error instanceof Error ? error.message : "Không thể lưu model nhà cung cấp");
+        }
+    };
+
+    const catalogGroupsByCapability = (capability: KeyCapability) =>
+        (canvasCatalog?.groups || []).filter((item) => (capability === "image" ? item.allowImageGeneration === true : capability === "video" ? item.videoCapable === true : true));
+    const catalogGroupOptions = catalogGroupsByCapability(newKeyCapability);
+
+    const changeNewKeyCapability = (capability: KeyCapability) => {
+        setNewKeyCapability(capability);
+        const allowed = catalogGroupsByCapability(capability);
+        if (newKeyGroupId && !allowed.some((item) => item.id === newKeyGroupId)) setNewKeyGroupId(allowed[0]?.id || "");
+    };
+
+    const saveNewCatalogProvider = async () => {
+        if (!newKeyGroupId) return;
+        setSavingCanvasProvider(true);
+        try {
+            const provider = await createCanvasProviderWithNewKey({ name: newKeyName.trim() || `Infinite Canvas - ${newKeyCapability}`, groupId: newKeyGroupId });
+            selectCanvasProvider(provider.id);
+            void loadCanvasCatalog(true).catch(() => undefined);
+            setCreateKeyMode(false);
+            setNewKeyGroupId("");
+            setNewKeyName("");
+            try {
+                const models = await loadCanvasModels(provider.id);
+                if (!provider.model && models[0]) await updateCanvasProvider(provider.id, { model: models[0] });
+            } catch {
+                message.warning(t("config.account.modelLoadFailed", { defaultValue: "Model list could not be loaded" }));
+            }
+            message.success(t("config.account.providerSaved", { defaultValue: "Provider saved" }));
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : t("config.account.providerSaveFailed", { defaultValue: "Provider could not be saved" }));
+        } finally {
+            setSavingCanvasProvider(false);
         }
     };
 
@@ -352,28 +393,78 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                                             ) : (
                                                 <div className="mt-1 text-xs text-stone-500">{t("config.account.emptyProviders", { defaultValue: "No Canvas providers saved yet." })}</div>
                                             )}
+                                            {canvasProviderSource === "sub2api" ? (
+                                                <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                                                    <div className="text-xs text-stone-500">
+                                                        {createKeyMode
+                                                            ? t("config.account.createKeyHint", { defaultValue: "A new Sub2API key will be created in the selected group, without quota or expiry limits." })
+                                                            : (canvasCatalog?.keys.length ? "" : t("config.account.emptyCatalogHint", { defaultValue: "No Sub2API API key yet? Create one right here." }))}
+                                                    </div>
+                                                    <Button size="small" type="text" icon={createKeyMode ? undefined : <Plus className="size-3.5" />} onClick={() => setCreateKeyMode((mode) => !mode)}>
+                                                        {t(createKeyMode ? "config.account.useExistingKey" : "config.account.createNewKey", { defaultValue: createKeyMode ? "Use existing key" : "Create new API key" })}
+                                                    </Button>
+                                                </div>
+                                            ) : null}
                                             <div className="mt-3 grid gap-2 md:grid-cols-[150px_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
                                                 <Form.Item label="Nguồn" className="mb-0">
                                                     <Select className="w-full" value={canvasProviderSource} onChange={setCanvasProviderSource} options={[{ value: "sub2api", label: "Sub2API" }, { value: "direct", label: "Third-party" }]} />
                                                 </Form.Item>
-                                                {canvasProviderSource === "sub2api" ? <Form.Item label={t("config.account.selectKey", { defaultValue: "Sub2API API Key" })} className="mb-0">
-                                                    <Select
-                                                        className="w-full"
-                                                        value={selectedCatalogKeyId || undefined}
-                                                        placeholder={t("config.account.selectKeyPlaceholder", { defaultValue: "Choose a key" })}
-                                                        loading={canvasProviderStatus === "loading"}
-                                                        options={(canvasCatalog?.keys || []).map((item) => ({ value: item.id, label: `${item.name}${item.maskedKey ? ` · ${item.maskedKey}` : ""}` }))}
-                                                        onChange={setSelectedCatalogKeyId}
-                                                        notFoundContent={t("config.account.emptyCatalog", { defaultValue: "No API keys available" })}
-                                                    />
-                                                </Form.Item> : <Form.Item label="Endpoint API" className="mb-0"><Input value={canvasProviderBaseUrl} placeholder="https://api.example.com" onChange={(event) => setCanvasProviderBaseUrl(event.target.value)} /></Form.Item>}
-                                                <Form.Item label={t("config.account.providerName", { defaultValue: "Provider name" })} className="mb-0">
-                                                    <Input value={canvasProviderName} placeholder={t("config.channels.newName")} onChange={(event) => setCanvasProviderName(event.target.value)} />
-                                                </Form.Item>
-                                                {canvasProviderSource === "direct" ? <Form.Item label="API key" className="mb-0"><Input.Password value={canvasProviderSecret} placeholder="sk-..." onChange={(event) => setCanvasProviderSecret(event.target.value)} /></Form.Item> : null}
-                                                <Button type="primary" disabled={canvasProviderSource === "sub2api" ? !selectedCatalogKeyId : !canvasProviderBaseUrl.trim() || !canvasProviderSecret.trim()} loading={savingCanvasProvider} onClick={() => void saveCanvasProvider()}>
-                                                    {t("config.account.saveProvider", { defaultValue: "Save provider" })}
-                                                </Button>
+                                                {canvasProviderSource === "sub2api" && createKeyMode ? (
+                                                    <>
+                                                        <Form.Item label={t("config.account.capabilityLabel", { defaultValue: "Capability" })} className="mb-0">
+                                                            <Segmented
+                                                                className="w-full"
+                                                                value={newKeyCapability}
+                                                                options={[
+                                                                    { value: "image", label: t("config.account.capabilityImage", { defaultValue: "Image" }) },
+                                                                    { value: "video", label: t("config.account.capabilityVideo", { defaultValue: "Video" }) },
+                                                                    { value: "text", label: t("config.account.capabilityText", { defaultValue: "Text" }) },
+                                                                ]}
+                                                                onChange={(value) => changeNewKeyCapability(value as KeyCapability)}
+                                                            />
+                                                        </Form.Item>
+                                                        <Form.Item label={t("config.account.groupLabel", { defaultValue: "Group" })} className="mb-0">
+                                                            <Select
+                                                                className="w-full"
+                                                                value={newKeyGroupId || undefined}
+                                                                placeholder={t("config.account.selectGroup", { defaultValue: "Select group" })}
+                                                                loading={canvasProviderStatus === "loading"}
+                                                                options={catalogGroupOptions.map((item) => ({ value: item.id, label: `${item.name}${item.platform ? ` · ${item.platform}` : ""}${item.rateMultiplier && item.rateMultiplier !== 1 ? ` · ×${item.rateMultiplier}` : ""}` }))}
+                                                                onChange={setNewKeyGroupId}
+                                                                notFoundContent={t("config.account.groupNotFound", { defaultValue: "No group supports this capability" })}
+                                                            />
+                                                        </Form.Item>
+                                                        <Form.Item label={t("config.account.keyNameLabel", { defaultValue: "API key name" })} className="mb-0">
+                                                            <Input value={newKeyName} placeholder={`Infinite Canvas - ${newKeyCapability}`} onChange={(event) => setNewKeyName(event.target.value)} />
+                                                        </Form.Item>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        {canvasProviderSource === "sub2api" ? <Form.Item label={t("config.account.selectKey", { defaultValue: "Sub2API API Key" })} className="mb-0">
+                                                            <Select
+                                                                className="w-full"
+                                                                value={selectedCatalogKeyId || undefined}
+                                                                placeholder={t("config.account.selectKeyPlaceholder", { defaultValue: "Choose a key" })}
+                                                                loading={canvasProviderStatus === "loading"}
+                                                                options={(canvasCatalog?.keys || []).map((item) => ({ value: item.id, label: `${item.name}${item.maskedKey ? ` · ${item.maskedKey}` : ""}` }))}
+                                                                onChange={setSelectedCatalogKeyId}
+                                                                notFoundContent={t("config.account.emptyCatalog", { defaultValue: "No API keys available" })}
+                                                            />
+                                                        </Form.Item> : <Form.Item label="Endpoint API" className="mb-0"><Input value={canvasProviderBaseUrl} placeholder="https://api.example.com" onChange={(event) => setCanvasProviderBaseUrl(event.target.value)} /></Form.Item>}
+                                                        <Form.Item label={t("config.account.providerName", { defaultValue: "Provider name" })} className="mb-0">
+                                                            <Input value={canvasProviderName} placeholder={t("config.channels.newName")} onChange={(event) => setCanvasProviderName(event.target.value)} />
+                                                        </Form.Item>
+                                                        {canvasProviderSource === "direct" ? <Form.Item label="API key" className="mb-0"><Input.Password value={canvasProviderSecret} placeholder="sk-..." onChange={(event) => setCanvasProviderSecret(event.target.value)} /></Form.Item> : null}
+                                                    </>
+                                                )}
+                                                {(() => {
+                                                    const usingNewKey = canvasProviderSource === "sub2api" && createKeyMode;
+                                                    return (
+                                                        <Button type="primary" disabled={usingNewKey ? !newKeyGroupId : canvasProviderSource === "sub2api" ? !selectedCatalogKeyId : !canvasProviderBaseUrl.trim() || !canvasProviderSecret.trim()} loading={savingCanvasProvider} onClick={() => void (usingNewKey ? saveNewCatalogProvider() : saveCanvasProvider())}>
+                                                            {t(usingNewKey ? "config.account.createKeyAndProvider" : "config.account.saveProvider", { defaultValue: usingNewKey ? "Create key & save provider" : "Save provider" })}
+                                                        </Button>
+                                                    );
+                                                })()}
                                             </div>
                                             <div className="mt-5 border-t border-stone-200 pt-4 dark:border-stone-800">
                                                 <div>

@@ -5,7 +5,7 @@ import { CanvasSessionToken, CurrentAccount, RequestId } from "../http/request-c
 import { ZodValidationPipe } from "../http/zod-validation.pipe.js";
 import type { CanvasAccount } from "../auth/session-service.js";
 import { CanvasSessionGuard } from "../auth/auth.guard.js";
-import { providerBody, providerPatch, ProvidersService } from "./providers.service.js";
+import { providerBody, providerKeyBody, providerPatch, ProvidersService } from "./providers.service.js";
 
 @Controller("api/v1/providers")
 @UseGuards(CanvasSessionGuard)
@@ -22,6 +22,8 @@ export class ProvidersController {
     async models(@CurrentAccount() account: CanvasAccount, @Param("providerId") id: string, @RequestId() requestId: string) { return { data: await this.providers.models(account.id, id), requestId }; }
     @Post()
     async create(@CurrentAccount() account: CanvasAccount, @CanvasSessionToken() sessionToken: string | undefined, @Body(new ZodValidationPipe(providerBody)) body: z.output<typeof providerBody>, @RequestId() requestId: string) { return { data: await this.providers.create(account.id, sessionToken, body), requestId }; }
+    @Post("catalog/keys")
+    async createCatalogKey(@CurrentAccount() account: CanvasAccount, @CanvasSessionToken() sessionToken: string | undefined, @Body(new ZodValidationPipe(providerKeyBody)) body: z.output<typeof providerKeyBody>, @RequestId() requestId: string) { return { data: await this.providers.createWithNewKey(account.id, sessionToken, body), requestId }; }
     @Patch(":providerId")
     async update(@CurrentAccount() account: CanvasAccount, @Param("providerId") id: string, @Body(new ZodValidationPipe(providerPatch)) body: z.output<typeof providerPatch>, @RequestId() requestId: string) { return { data: await this.providers.update(account.id, id, body), requestId }; }
     @Delete(":providerId")
