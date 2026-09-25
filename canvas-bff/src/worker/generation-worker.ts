@@ -22,16 +22,22 @@ export class GenerationWorker {
     private readonly provider: GenerationProvider;
     private readonly workerId: string;
     private readonly leaseMs: number;
+    private readonly maxAttempts: number;
+    private readonly retryBackoffBaseMs: number;
+    private readonly retryBackoffMaxMs: number;
     private readonly now: () => number;
     private readonly retention?: ObjectStorageRetention;
 
-    constructor(options: { generationRepository: GenerationRepository; assetRepository: AssetRepository; objectStorage: ObjectStorage; provider: GenerationProvider; workerId: string; leaseMs?: number; now?: () => number; retention?: ObjectStorageRetention }) {
+    constructor(options: { generationRepository: GenerationRepository; assetRepository: AssetRepository; objectStorage: ObjectStorage; provider: GenerationProvider; workerId: string; leaseMs?: number; maxAttempts?: number; retryBackoffBaseMs?: number; retryBackoffMaxMs?: number; now?: () => number; retention?: ObjectStorageRetention }) {
         this.generations = options.generationRepository;
         this.assets = options.assetRepository;
         this.storage = options.objectStorage;
         this.provider = options.provider;
         this.workerId = options.workerId;
         this.leaseMs = options.leaseMs ?? 30_000;
+        this.maxAttempts = options.maxAttempts ?? 5;
+        this.retryBackoffBaseMs = options.retryBackoffBaseMs ?? 30_000;
+        this.retryBackoffMaxMs = options.retryBackoffMaxMs ?? 480_000;
         this.now = options.now ?? Date.now;
         this.retention = options.retention;
     }
@@ -51,8 +57,9 @@ export class GenerationWorker {
             return this.generations.get(generation.accountId, generation.id);
         }
         if (result.status === "failed") {
-            if (result.retryable) await this.generations.releaseForRetry(generation.id, this.workerId, result.errorCode);
-            else await this.generations.fail(generation.id, this.workerId, result.errorCode);
+            if (!result.retryable) await this.generations.fail(generation.id, this.workerId, result.errorCode);
+            else if (generation.attempt + 1 >= this.maxAttempts) await this.generations.fail(generation.id, this.workerId, "MAX_RETRY_EXCEEDED");
+            else await this.generations.releaseForRetry(generation.id, this.workerId, result.errorCode, new Date(this.now() + this.retryBackoffMs(generation.attempt)));
             return this.generations.get(generation.accountId, generation.id);
         }
         const stored = await this.storage.put({ accountId: generation.accountId, data: result.data, contentType: result.contentType });
@@ -67,6 +74,10 @@ export class GenerationWorker {
         await this.generations.complete(generation.id, this.workerId, asset.id);
         await this.enforceRetention([stored.key]);
         return this.generations.get(generation.accountId, generation.id);
+    }
+
+    private retryBackoffMs(attempt: number): number {
+        return Math.min(this.retryBackoffBaseMs * 2 ** attempt, this.retryBackoffMaxMs);
     }
 
     private async enforceRetention(protectedKeys: string[] = []): Promise<void> {

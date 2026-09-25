@@ -110,8 +110,47 @@ test("worker retries a retryable provider failure without creating another gener
         },
     };
     const worker = new GenerationWorker({ generationRepository: fixtureData.generations, assetRepository: fixtureData.assets, objectStorage: fixtureData.storage, provider, workerId: "worker-1", now: fixtureData.clock });
-    assert.equal((await worker.runOnce())?.status, "queued");
+    const retried = await worker.runOnce();
+    assert.equal(retried?.status, "queued");
+    assert.equal(retried?.attempt, 1);
+    assert.equal(retried?.errorCode, "UPSTREAM_TIMEOUT");
+    assert.equal(retried?.leaseExpiresAt?.getTime(), fixtureData.now.value + 30_000);
+    fixtureData.now.value += 30_000;
     assert.equal((await worker.runOnce())?.status, "succeeded");
+    assert.equal((await fixtureData.service.list(fixtureData.accountId)).length, 1);
+});
+
+test("worker fails a generation permanently after exhausting retry attempts", async () => {
+    const fixtureData = fixture();
+    await fixtureData.service.create(fixtureData.accountId, {
+        projectId: fixtureData.project.id,
+        providerId: fixtureData.provider.id,
+        kind: "image",
+        input: { prompt: "always failing" },
+        clientRequestId: "request-max-retry-1",
+    });
+    let calls = 0;
+    const provider: GenerationProvider = {
+        async start() {
+            calls += 1;
+            return { status: "failed", retryable: true, errorCode: "UPSTREAM_HTTP_503" };
+        },
+        async poll() {
+            throw new Error("poll is not expected");
+        },
+    };
+    const worker = new GenerationWorker({ generationRepository: fixtureData.generations, assetRepository: fixtureData.assets, objectStorage: fixtureData.storage, provider, workerId: "worker-1", now: fixtureData.clock });
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+        const retried = await worker.runOnce();
+        assert.equal(retried?.status, "queued");
+        assert.equal(retried?.leaseExpiresAt?.getTime(), fixtureData.now.value + Math.min(30_000 * 2 ** attempt, 480_000));
+        fixtureData.now.value += 600_000;
+    }
+    const failed = await worker.runOnce();
+    assert.equal(failed?.status, "failed");
+    assert.equal(failed?.errorCode, "MAX_RETRY_EXCEEDED");
+    assert.equal(failed?.attempt, 4);
+    assert.equal(calls, 5);
     assert.equal((await fixtureData.service.list(fixtureData.accountId)).length, 1);
 });
 

@@ -74,8 +74,8 @@ export class PostgresGenerationRepository implements GenerationRepository {
         return result.rowCount === 1;
     }
 
-    async releaseForRetry(id: string, workerId: string, errorCode: string): Promise<boolean> {
-        const result = await this.pool.query("UPDATE canvas_generations SET status = 'queued', attempt = attempt + 1, error_code = $3, lease_owner = NULL, lease_expires_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND lease_owner = $2 AND status <> 'cancelled'", [id, workerId, errorCode]);
+    async releaseForRetry(id: string, workerId: string, errorCode: string, retryAt?: Date): Promise<boolean> {
+        const result = await this.pool.query("UPDATE canvas_generations SET status = 'queued', attempt = attempt + 1, error_code = $3, lease_owner = NULL, lease_expires_at = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND lease_owner = $2 AND status <> 'cancelled'", [id, workerId, errorCode, retryAt ?? null]);
         return result.rowCount === 1;
     }
 
