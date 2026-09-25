@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- [修复] Canvas BFF generation worker 限制重试次数与退避：可重试失败（如上游 503）最多尝试 5 次后以 `MAX_RETRY_EXCEEDED` 永久失败，重试按 30s→60s→120s→240s→480s 指数退避，避免单个故障 provider 的任务无限重试并阻塞后续所有生成任务（OVH 上曾因该问题卡死队列数小时）。
+
+- [调整] 重设计 Canvas Provider 设置：移除与 Studio 默认值重复的顶部 Provider/Model 选择行，改为已保存 Provider 的紧凑列表（名称 · 分组 · 掩码 Key）；清理随之失效的 selectedProviderId 状态。
+- [修复] 全新 Sub2API 账户无法添加 Provider：没有任何 API Key 时自动进入“创建新 Key”流程，自动选中存在可用分组的能力与第一个分组；修复创建 Key / 第三方 Provider 表单在窄布局下换行错位；账户没有任何可用分组时显示明确指引提示。
 - [新增] Canvas 配置面板支持直接创建 Sub2API API Key 并一键保存为 Provider：按 Image/Video/Text 能力过滤分组，默认命名 `Infinite Canvas - <capability>`，不限额度与有效期。
 - [修复] Canvas 添加“我的资产”后挂载提示面板不再触发 React 19 #185 无限更新错误。
 - [修复] Canvas 设置新增独立的文本/Prompt 翻译模型选择，并保留已保存的 Canvas 模型以支持越南语 Prompt 翻译。
