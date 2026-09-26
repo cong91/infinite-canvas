@@ -138,6 +138,7 @@ export const canvasBff = {
     deleteProject: (projectId: string) => request<void>(`/v1/projects/${encodeURIComponent(projectId)}`, { method: "DELETE" }),
     listAssets: (projectId?: string) => request<CanvasAsset[]>(`/v1/assets${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ""}`),
     getAsset: (assetId: string) => request<CanvasAsset>(`/v1/assets/${encodeURIComponent(assetId)}`),
+    uploadAsset: (blob: Blob, kind: CanvasAsset["kind"] = "image") => uploadRequest<CanvasAsset>(`/v1/assets/upload?kind=${kind}`, blob),
     listGenerations: () => request<CanvasGeneration[]>("/v1/generations"),
     getGeneration: (generationId: string) => request<CanvasGeneration>(`/v1/generations/${encodeURIComponent(generationId)}`),
     createGeneration: (input: { projectId: string; providerId: string; kind: CanvasGeneration["kind"]; input?: Record<string, unknown>; clientRequestId: string }) => request<CanvasGeneration>("/v1/generations", { method: "POST", body: input }),
@@ -153,6 +154,20 @@ async function request<T>(path: string, options: { method?: string; body?: unkno
         credentials: "include",
         body: options.body === undefined ? undefined : JSON.stringify(options.body),
     });
+    return unwrapResponse<T>(response);
+}
+
+async function uploadRequest<T>(path: string, blob: Blob): Promise<T> {
+    const response = await fetch(`${canvasBffUrl}${path}`, {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": blob.type || "application/octet-stream" },
+        credentials: "include",
+        body: blob,
+    });
+    return unwrapResponse<T>(response);
+}
+
+async function unwrapResponse<T>(response: Response): Promise<T> {
     if (response.status === 204) return undefined as T;
     const body = await readJson(response);
     if (!response.ok) {

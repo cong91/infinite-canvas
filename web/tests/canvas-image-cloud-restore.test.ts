@@ -24,6 +24,21 @@ Object.defineProperty(globalThis, "fetch", {
     },
 });
 
+// uploadImage 的远程分支在 window 上挂定时器，元数据解码需要 Image；bun 环境补最小实现。
+if (typeof window === "undefined") {
+    Object.defineProperty(globalThis, "window", { configurable: true, value: { setTimeout, clearTimeout } });
+}
+class ImageStub {
+    naturalWidth = 8;
+    naturalHeight = 8;
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    set src(_value: string) {
+        queueMicrotask(() => this.onload?.());
+    }
+}
+Object.defineProperty(globalThis, "Image", { configurable: true, value: ImageStub });
+
 import { CanvasNodeType, type CanvasNodeData } from "../src/types/canvas";
 
 class FileReaderStub {
@@ -127,6 +142,26 @@ test("imageMetadata carries the cloud assetId onto node metadata", async () => {
     const { imageMetadata } = await import("../src/lib/canvas/canvas-node-factory");
     const uploaded = { url: "blob:local", storageKey: "image:abc", width: 10, height: 10, bytes: 3, mimeType: "image/png" };
 
-    expect(imageMetadata(uploaded, "asset-9").assetId).toBe("asset-9");
+    expect(imageMetadata({ ...uploaded, assetId: "asset-9" }).assetId).toBe("asset-9");
     expect("assetId" in imageMetadata(uploaded)).toBe(false);
+});
+
+test("uploadImage pushes a cloud copy and returns its assetId when canvas-authenticated", async () => {
+    await setAccountStatus("authenticated");
+    const { uploadImage } = await import("../src/services/image-storage");
+    responses.set("/api/v1/assets/upload?kind=image", { data: { id: "asset-up", kind: "image", metadata: {} } });
+
+    const uploaded = await uploadImage(new Blob([Buffer.from("89504e470d0a1a0a", "hex")], { type: "image/png" }));
+    expect(uploaded.assetId).toBe("asset-up");
+    expect(uploaded.storageKey).toContain("image:");
+    expect(requests.some((url) => url === "/api/v1/assets/upload?kind=image")).toBe(true);
+});
+
+test("uploadImage stays local-only when not canvas-authenticated", async () => {
+    await setAccountStatus("unauthenticated");
+    const { uploadImage } = await import("../src/services/image-storage");
+
+    const uploaded = await uploadImage(new Blob([Buffer.from("89504e470d0a1a0a", "hex")], { type: "image/png" }));
+    expect(uploaded.assetId).toBeUndefined();
+    expect(requests.filter((url) => url.includes("/v1/assets/upload"))).toEqual([]);
 });

@@ -1,6 +1,6 @@
 import { defaultConfig, resolveModelForCapability, type AiConfig } from "@/stores/use-config-store";
 import i18n from "@/i18n";
-import { ensureImagePreview, resolveImageUrl, setImageBlob, uploadImage } from "@/services/image-storage";
+import { ensureImagePreview, getImageBlob, resolveImageUrl, setImageBlob, uploadImage } from "@/services/image-storage";
 import { resolveMediaUrl } from "@/services/file-storage";
 import { canvasBff, type CanvasAsset } from "@/services/api/canvas-bff";
 import { isCanvasAccountAuthenticated } from "@/services/api/canvas-generation";
@@ -73,6 +73,16 @@ export async function restoreCanvasImage(storageKey: string | undefined, assetId
     return blob ? setImageBlob(storageKey, blob) : fallback;
 }
 
+// 修复上线前上传的旧图片只在本地 IndexedDB 里：打开项目时若本地 blob 还在（原设备），
+// 顺手补传云端并回填 assetId，项目随后自动保存，其他设备从此可恢复。
+async function backfillCanvasAssetId(storageKey: string | undefined, assetId: string | undefined) {
+    if (!storageKey || assetId || !isCanvasAccountAuthenticated()) return undefined;
+    const blob = await getImageBlob(storageKey);
+    if (!blob) return undefined;
+    const uploaded = await canvasBff.uploadAsset(blob).catch(() => undefined);
+    return uploaded?.id;
+}
+
 export async function hydrateCanvasImages(nodes: CanvasNodeData[]) {
     return Promise.all(
         nodes.map(async (node) => {
@@ -84,12 +94,14 @@ export async function hydrateCanvasImages(nodes: CanvasNodeData[]) {
                 (metadata.images || []).map(async (image) => {
                     if (!image.content) return image;
                     void ensureImagePreview(image.storageKey);
-                    return { ...image, content: await restoreCanvasImage(image.storageKey, image.assetId, image.content, image.bytes) };
+                    const restoredAssetId = await backfillCanvasAssetId(image.storageKey, image.assetId);
+                    return { ...image, ...(restoredAssetId ? { assetId: restoredAssetId } : {}), content: await restoreCanvasImage(image.storageKey, image.assetId || restoredAssetId, image.content, image.bytes) };
                 }),
             );
             if (metadata.storageKey) {
                 void ensureImagePreview(metadata.storageKey);
-                return { ...node, metadata: { ...metadata, content: await restoreCanvasImage(metadata.storageKey, metadata.assetId, content, metadata.bytes), images } };
+                const assetId = await backfillCanvasAssetId(metadata.storageKey, metadata.assetId);
+                return { ...node, metadata: { ...metadata, ...(assetId ? { assetId } : {}), content: await restoreCanvasImage(metadata.storageKey, metadata.assetId || assetId, content, metadata.bytes), images } };
             }
             if (!content.startsWith("data:image/")) return node;
             return { ...node, metadata: { ...metadata, ...imageMetadata(await uploadImage(content)) } };

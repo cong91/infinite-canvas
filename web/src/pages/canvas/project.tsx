@@ -1563,6 +1563,29 @@ function InfiniteCanvasPage() {
         setDialogNodeId(id);
     }, []);
 
+    // 拖入的图片 URL（网页/其他标签页）：下载后走同一条上传链路，同样落云端缓存。
+    const createImageUrlNode = useCallback(async (url: string, position: Position) => {
+        const image = await uploadImage(url);
+        const size = fitNodeSize(image.width, image.height);
+        const id = `image-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const title = decodeURIComponent(url.split("?")[0].split("/").pop() || url).slice(0, 60) || url;
+        setNodes((prev) => [
+            ...prev,
+            {
+                id,
+                type: CanvasNodeType.Image,
+                title,
+                position: { x: position.x - size.width / 2, y: position.y - size.height / 2 },
+                width: size.width,
+                height: size.height,
+                metadata: imageMetadata(image),
+            },
+        ]);
+        setSelectedNodeIds(new Set([id]));
+        setSelectedConnectionId(null);
+        setDialogNodeId(id);
+    }, []);
+
     const createVideoFileNode = useCallback(async (file: File, position: Position) => {
         const video = await uploadMediaFile(file, "video");
         const size = fitNodeSize(video.width || 1280, video.height || 720, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
@@ -2105,7 +2128,7 @@ function InfiniteCanvasPage() {
                 const image = await requestEdit(generationConfig, prompt, references, { signal: controller.signal }).then((items) => items[0]);
                 const uploaded = await uploadImage(image.dataUrl, { signal: controller.signal });
                 const size = fitNodeSize(uploaded.width, uploaded.height, node.width, node.height);
-                setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, width: size.width, height: size.height, metadata: { ...item.metadata, ...imageMetadata(uploaded, image.assetId), prompt, ...generationMetadata } } : item)));
+                setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, width: size.width, height: size.height, metadata: { ...item.metadata, ...imageMetadata(uploaded), prompt, ...generationMetadata } } : item)));
             } catch (error) {
                 if (isGenerationCanceled(error)) return;
                 const errorDetails = error instanceof Error ? error.message : t("canvas.projectPage.maskFailed");
@@ -2183,7 +2206,7 @@ function InfiniteCanvasPage() {
                 }).then((items) => items[0]);
                 const uploaded = await uploadImage(image.dataUrl, { signal: controller.signal });
                 const size = fitNodeSize(uploaded.width, uploaded.height, imageConfig.width, imageConfig.height);
-                setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, width: size.width, height: size.height, metadata: { ...item.metadata, ...imageMetadata(uploaded, image.assetId), prompt, ...generationMetadata } } : item)));
+                setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, width: size.width, height: size.height, metadata: { ...item.metadata, ...imageMetadata(uploaded), prompt, ...generationMetadata } } : item)));
             } catch (error) {
                 if (isGenerationCanceled(error)) return;
                 const errorDetails = error instanceof Error ? error.message : t("canvas.projectPage.generationFailed");
@@ -2334,8 +2357,6 @@ function InfiniteCanvasPage() {
         (event: ReactDragEvent<HTMLDivElement>) => {
             event.preventDefault();
             const files = Array.from(event.dataTransfer.files).filter((item) => item.type.startsWith("image/") || item.type.startsWith("video/") || isAudioFile(item));
-            if (!files.length) return;
-
             const basePos = screenToCanvas(event.clientX, event.clientY);
             const STAGGER = 40;
             for (let i = 0; i < files.length; i++) {
@@ -2349,8 +2370,14 @@ function InfiniteCanvasPage() {
                     void createImageFileNode(f, pos);
                 }
             }
+            if (files.length) return;
+
+            // 从网页/其他浏览器窗口拖进来的图片没有 files，只有 URL：抓下来转成图片节点。
+            const droppedUrl = event.dataTransfer.getData("text/uri-list") || event.dataTransfer.getData("text/plain");
+            const imageUrl = droppedUrl.trim().split(/\r?\n/).find((line) => line.startsWith("http"));
+            if (imageUrl) void createImageUrlNode(imageUrl, basePos);
         },
-        [createAudioFileNode, createImageFileNode, createVideoFileNode, screenToCanvas],
+        [createAudioFileNode, createImageFileNode, createImageUrlNode, createVideoFileNode, screenToCanvas],
     );
 
     const startTitleEditing = useCallback(() => {
@@ -2397,7 +2424,7 @@ function InfiniteCanvasPage() {
                         : await requestGeneration({ ...generationConfig, count: "1" }, context.prompt, { signal: controller.signal }).then((items) => items[0]);
                     const uploaded = await uploadImage(image.dataUrl, { signal: controller.signal });
                     setNodes((prev) =>
-                        prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, ...imageMetadata(uploaded, image.assetId), prompt: scene, model: generationConfig.model, status: NODE_STATUS_SUCCESS, errorDetails: undefined } } : node)),
+                        prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, ...imageMetadata(uploaded), prompt: scene, model: generationConfig.model, status: NODE_STATUS_SUCCESS, errorDetails: undefined } } : node)),
                     );
                     setDialogNodeId(null);
                 } catch (error) {
@@ -2528,7 +2555,7 @@ function InfiniteCanvasPage() {
                                     status: NODE_STATUS_SUCCESS,
                                     content: uploaded.url,
                                     storageKey: uploaded.storageKey,
-                                    assetId: image.assetId,
+                                    assetId: uploaded.assetId || image.assetId,
                                     naturalWidth: uploaded.width,
                                     naturalHeight: uploaded.height,
                                     bytes: uploaded.bytes,
@@ -2960,7 +2987,7 @@ function InfiniteCanvasPage() {
                     status: NODE_STATUS_SUCCESS,
                     content: uploadedImage.url,
                     storageKey: uploadedImage.storageKey,
-                    assetId: image.assetId,
+                    assetId: uploadedImage.assetId || image.assetId,
                     naturalWidth: uploadedImage.width,
                     naturalHeight: uploadedImage.height,
                     bytes: uploadedImage.bytes,
@@ -2996,7 +3023,7 @@ function InfiniteCanvasPage() {
                                 : {}),
                             metadata: {
                                 ...item.metadata,
-                                ...(makePrimary ? imageMetadata(uploadedImage, image.assetId) : { status: NODE_STATUS_SUCCESS }),
+                                ...(makePrimary ? imageMetadata(uploadedImage) : { status: NODE_STATUS_SUCCESS }),
                                 images: item.metadata?.images?.map((current) => (current.id === retryImage.id ? retryImage : current)),
                                 primaryImageId: makePrimary ? retryImage.id : item.metadata?.primaryImageId,
                                 prompt,

@@ -415,11 +415,12 @@ export default function ImagePage() {
 
     const materializeImage = async (imageId: string, dataUrl: string, startedAtMs: number, assetId?: string): Promise<GeneratedImage> => {
         const stored = await uploadImage(dataUrl);
+        const cloudAssetId = stored.assetId || assetId;
         return {
             id: imageId,
             dataUrl: stored.url,
             ...(stored.storageKey ? { storageKey: stored.storageKey } : {}),
-            ...(assetId ? { assetId } : {}),
+            ...(cloudAssetId ? { assetId: cloudAssetId } : {}),
             durationMs: Date.now() - startedAtMs,
             width: stored.width,
             height: stored.height,

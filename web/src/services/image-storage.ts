@@ -3,11 +3,14 @@ import localforage from "localforage";
 import { nanoid } from "nanoid";
 import i18n from "@/i18n";
 import { withLocalProxy } from "@/stores/use-config-store";
+import { isCanvasAccountBacked } from "@/stores/canvas/account-runtime";
+import { canvasBff } from "@/services/api/canvas-bff";
 import { createImageThumbnail } from "@/lib/image-thumbnail";
 
 export type UploadedImage = {
     url: string;
     storageKey?: string;
+    assetId?: string;
     width: number;
     height: number;
     bytes: number;
@@ -60,11 +63,23 @@ async function storeImage(blob: Blob, options?: ImageReadOptions): Promise<Uploa
         throwIfAborted(options?.signal);
         objectUrls.set(storageKey, url);
         await storeImagePreview(storageKey, blob);
-        return { url, storageKey, width: meta.width, height: meta.height, bytes: blob.size, mimeType: blob.type.startsWith("image/") ? blob.type : "" };
+        // Canvas 账号登录时把上传/生成的图片同步一份到云端媒体存储（BFF 端按 checksum
+        // 去重，生成结果不会产生第二份存储）；失败不影响本地使用，跨设备恢复走 assetId。
+        const assetId = await cloudBackupImage(blob);
+        return { url, storageKey, ...(assetId ? { assetId } : {}), width: meta.width, height: meta.height, bytes: blob.size, mimeType: blob.type.startsWith("image/") ? blob.type : "" };
     } catch (error) {
         URL.revokeObjectURL(url);
         await store.removeItem(storageKey).catch(() => undefined);
         throw error;
+    }
+}
+
+async function cloudBackupImage(blob: Blob): Promise<string | undefined> {
+    if (!isCanvasAccountBacked()) return undefined;
+    try {
+        return (await canvasBff.uploadAsset(blob)).id;
+    } catch {
+        return undefined;
     }
 }
 
