@@ -17,6 +17,7 @@ import { useThemeStore } from "@/stores/use-theme-store";
 import { nanoid } from "nanoid";
 import { formatBytes, formatDuration } from "@/lib/image-utils";
 import { requestEdit, requestGeneration } from "@/services/api/image";
+import { awaitCanvasImage } from "@/services/api/canvas-generation";
 import { deleteStoredImages, ensureImagePreview, getImagePreviewRevision, previewUrlFor, resolveImageUrl, subscribeImagePreviews, uploadImage } from "@/services/image-storage";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { useWorkbenchAgentStore } from "@/stores/use-workbench-agent-store";
@@ -58,7 +59,8 @@ type GenerationLog = {
     imageCount: number;
     size: string;
     quality: string;
-    status: "success" | "failed";
+    status: "running" | "success" | "failed";
+    task?: { generationIds: string[] };
     error?: string;
     images: GeneratedImage[];
 };
@@ -107,6 +109,8 @@ export default function ImagePage() {
     const updateAgentTask = useWorkbenchAgentStore((state) => state.updateTask);
     const processedCommandRef = useRef(0);
     const agentTaskIdRef = useRef<string | undefined>(undefined);
+    const activeLogRef = useRef<GenerationLog | null>(null);
+    const activeLogIdsRef = useRef<Set<string>>(new Set());
 
     const model = accountStatus === "authenticated" ? (studioImageModel ?? (effectiveConfig.imageModel.startsWith("canvas::") ? effectiveConfig.imageModel : "")) : studioImageModel || effectiveConfig.imageModel || effectiveConfig.model;
     const canGenerate = Boolean(prompt.trim());
@@ -187,6 +191,10 @@ export default function ImagePage() {
         setResults(Array.from({ length: generationCount }, () => ({ id: nanoid(), status: "pending" })));
         const batchStartedAt = performance.now();
         setStartedAt(batchStartedAt);
+        const runningLog = buildLog({ prompt: text, model, config: { ...snapshot.config, count: String(generationCount) }, references: snapshot.references, durationMs: 0, successCount: 0, failCount: 0, status: "running", images: [] });
+        activeLogRef.current = runningLog;
+        activeLogIdsRef.current.add(runningLog.id);
+        saveLog(runningLog);
 
         const tasks = Array.from({ length: generationCount }, (_, index) => runGenerationSlot(index, snapshot));
 
@@ -199,22 +207,19 @@ export default function ImagePage() {
         if (agentTaskId) updateAgentTask(agentTaskId, { status: successCount ? "succeeded" : "failed", successCount, failCount, error: successCount ? undefined : error });
 
         try {
-            saveLog(
-                buildLog({
-                    prompt: text,
-                    model,
-                    config: { ...snapshot.config, count: String(generationCount) },
-                    references: snapshot.references,
-                    durationMs: performance.now() - batchStartedAt,
-                    successCount,
-                    failCount,
-                    status: successCount ? "success" : "failed",
-                    error: successCount ? undefined : error,
-                    images: successImages,
-                }),
-            );
+            saveLog({
+                ...(activeLogRef.current || runningLog),
+                durationMs: performance.now() - batchStartedAt,
+                successCount,
+                failCount,
+                status: successCount ? "success" : "failed",
+                error: successCount ? undefined : error,
+                images: successImages,
+            });
             successCount ? message.success(t("imageWorkbench.generated")) : message.error(failed?.reason instanceof Error ? failed.reason.message : t("workbench.generationFailed"));
         } finally {
+            activeLogRef.current = null;
+            activeLogIdsRef.current.delete(runningLog.id);
             setRunning(false);
         }
     };
@@ -302,7 +307,67 @@ export default function ImagePage() {
         void logStore.setItem(log.id, serializeLog(log)).then(refreshLogs);
     };
 
-    const refreshLogs = async () => setLogs(await readStoredLogs());
+    const refreshLogs = async () => {
+        const nextLogs = await readStoredLogs();
+        setLogs(nextLogs);
+        void resumeRunningLogs(nextLogs);
+    };
+
+    // A "running" log from a previous page load cannot still be in flight in this tab: either the canvas
+    // tasks are still queued server-side (resume polling them) or the run is unrecoverable (mark interrupted).
+    const resumeRunningLogs = (items: GenerationLog[]) => {
+        for (const log of items) {
+            if (log.status !== "running" || activeLogIdsRef.current.has(log.id)) continue;
+            const taskIds = log.task?.generationIds || [];
+            if (!taskIds.length) {
+                activeLogIdsRef.current.add(log.id);
+                saveLog({ ...log, status: "failed", durationMs: Date.now() - log.createdAt, failCount: log.imageCount || 1, error: t("workbench.interrupted") });
+                activeLogIdsRef.current.delete(log.id);
+                continue;
+            }
+            resumeCanvasLog(log, taskIds);
+        }
+    };
+
+    const resumeCanvasLog = (log: GenerationLog, taskIds: string[]) => {
+        activeLogIdsRef.current.add(log.id);
+        setRunning(true);
+        setStartedAt((value) => value || performance.now());
+        setResults(taskIds.map((id) => ({ id, status: "pending" as const })));
+        void (async () => {
+            const startedAtMs = Date.now();
+            const settled = await Promise.allSettled(
+                taskIds.map(async (taskId, index) => {
+                    try {
+                        const image = await awaitCanvasImage(taskId);
+                        const nextImage = await materializeImage(image.id, image.dataUrl, startedAtMs);
+                        setResults((value) => updateResultAt(value, index, { status: "success", image: nextImage }));
+                        return nextImage;
+                    } catch (error) {
+                        setResults((value) => updateResultAt(value, index, { status: "failed", error: error instanceof Error ? error.message : t("workbench.generationFailed") }));
+                        throw error;
+                    }
+                }),
+            );
+            if (!activeLogIdsRef.current.has(log.id)) return;
+            const successImages = settled.filter((item): item is PromiseFulfilledResult<GeneratedImage> => item.status === "fulfilled").map((item) => item.value);
+            const failCount = taskIds.length - successImages.length;
+            const failed = settled.find((item): item is PromiseRejectedResult => item.status === "rejected");
+            const error = failed?.reason instanceof Error ? failed.reason.message : failCount ? t("workbench.generationFailed") : undefined;
+            saveLog({
+                ...log,
+                durationMs: Date.now() - log.createdAt,
+                successCount: successImages.length,
+                failCount,
+                status: successImages.length ? "success" : "failed",
+                error: successImages.length ? undefined : error,
+                images: successImages,
+            });
+            successImages.length ? message.success(t("imageWorkbench.generated")) : message.error(error || t("workbench.generationFailed"));
+            setRunning(false);
+            activeLogIdsRef.current.delete(log.id);
+        })();
+    };
 
     const previewGenerationLog = async (log: GenerationLog) => {
         setPreviewLog(log);
@@ -336,23 +401,35 @@ export default function ImagePage() {
         return { text, config: { ...effectiveConfig, model, imageModel: model, count: "1" }, references: [...references] };
     };
 
+    const trackCanvasTask = (taskId: string) => {
+        const log = activeLogRef.current;
+        if (!log || log.status !== "running") return;
+        const next = { ...log, task: { generationIds: [...(log.task?.generationIds || []), taskId] } };
+        activeLogRef.current = next;
+        saveLog(next);
+    };
+
+    const materializeImage = async (imageId: string, dataUrl: string, startedAtMs: number): Promise<GeneratedImage> => {
+        const stored = await uploadImage(dataUrl);
+        return {
+            id: imageId,
+            dataUrl: stored.url,
+            ...(stored.storageKey ? { storageKey: stored.storageKey } : {}),
+            durationMs: Date.now() - startedAtMs,
+            width: stored.width,
+            height: stored.height,
+            bytes: stored.bytes,
+            mimeType: stored.mimeType,
+        };
+    };
+
     const runGenerationSlot = async (index: number, snapshot: { text: string; config: AiConfig; references: ReferenceImage[] }) => {
-        const itemStartedAt = performance.now();
+        const itemStartedAt = Date.now();
         try {
-            const result = snapshot.references.length ? await requestEdit(snapshot.config, snapshot.text, snapshot.references) : await requestGeneration(snapshot.config, snapshot.text);
+            const result = snapshot.references.length ? await requestEdit(snapshot.config, snapshot.text, snapshot.references, { onCanvasTask: trackCanvasTask }) : await requestGeneration(snapshot.config, snapshot.text, { onCanvasTask: trackCanvasTask });
             const image = result[0];
             if (!image) throw new Error(t("imageWorkbench.missingResult"));
-            const stored = await uploadImage(image.dataUrl);
-            const nextImage: GeneratedImage = {
-                id: image.id,
-                dataUrl: stored.url,
-                ...(stored.storageKey ? { storageKey: stored.storageKey } : {}),
-                durationMs: performance.now() - itemStartedAt,
-                width: stored.width,
-                height: stored.height,
-                bytes: stored.bytes,
-                mimeType: stored.mimeType,
-            };
+            const nextImage = await materializeImage(image.id, image.dataUrl, itemStartedAt);
             setResults((value) => updateResultAt(value, index, { status: "success", image: nextImage }));
             return nextImage;
         } catch (error) {
@@ -786,9 +863,15 @@ function LogCard({ log, selected, active, onSelectedChange, onClick }: { log: Ge
                 </div>
                 <div className="flex max-w-[46%] shrink-0 flex-col items-end gap-1">
                     <div className="flex max-w-full flex-wrap justify-end gap-1">
-                        <Tag className="m-0 flex h-6 items-center rounded-md px-1.5 text-xs leading-none" color="blue">
-                            {t("workbench.successCount", { count: log.successCount ?? log.imageCount })}
-                        </Tag>
+                        {log.status === "running" ? (
+                            <Tag className="m-0 flex h-6 items-center rounded-md px-1.5 text-xs leading-none" color="processing" icon={<LoaderCircle className="size-3 animate-spin" />}>
+                                {t("workbench.running")}
+                            </Tag>
+                        ) : (
+                            <Tag className="m-0 flex h-6 items-center rounded-md px-1.5 text-xs leading-none" color="blue">
+                                {t("workbench.successCount", { count: log.successCount ?? log.imageCount })}
+                            </Tag>
+                        )}
                         {log.failCount ? (
                             <Tag className="m-0 flex h-6 items-center rounded-md px-1.5 text-xs leading-none" color="red">
                                 {t("workbench.failCount", { count: log.failCount })}
@@ -797,9 +880,11 @@ function LogCard({ log, selected, active, onSelectedChange, onClick }: { log: Ge
                     </div>
                     <div className="flex max-w-full flex-wrap justify-end gap-1">
                         <Tag className="m-0 flex h-6 items-center rounded-md px-1.5 text-xs leading-none">{t("workbench.itemCount", { count: log.imageCount })}</Tag>
-                        <Tag className="m-0 flex h-6 items-center rounded-md px-1.5 text-xs leading-none" color="green">
-                            {formatDuration(log.durationMs)}
-                        </Tag>
+                        {log.status !== "running" ? (
+                            <Tag className="m-0 flex h-6 items-center rounded-md px-1.5 text-xs leading-none" color="green">
+                                {formatDuration(log.durationMs)}
+                            </Tag>
+                        ) : null}
                     </div>
                     <div className="flex justify-end">
                         <Tag className="m-0 flex h-6 items-center rounded-md px-1.5 text-xs leading-none">{log.time}</Tag>
@@ -854,6 +939,7 @@ async function normalizeLog(log: Partial<GenerationLog>): Promise<GenerationLog>
         size: log.size || config.size || "",
         quality: log.quality || config.quality || "",
         status: log.status || "success",
+        task: log.task,
         images,
         error: log.error,
     };

@@ -277,6 +277,8 @@ export default {
         successCount: "成功 {{count}}",
         failCount: "失败 {{count}}",
         itemCount: "{{count}} 张",
+        running: "生成中",
+        interrupted: "已因页面关闭或刷新而中断",
         untitled: "未命名",
         configFirst: "请先完成配置",
         generationFailed: "生成失败",

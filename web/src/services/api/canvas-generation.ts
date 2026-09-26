@@ -67,9 +67,15 @@ export async function readCanvasGenerationBlob(generation: CanvasGeneration, opt
     return response.blob();
 }
 
-export async function requestCanvasImage(config: AiConfig, prompt: string, options?: { signal?: AbortSignal }) {
+export async function requestCanvasImage(config: AiConfig, prompt: string, options?: { signal?: AbortSignal; onCanvasTask?: (generationId: string) => void }) {
     const generation = await submitCanvasGeneration("image", config, prompt, { count: config.count, size: config.size, quality: config.quality }, options);
-    const completed = await waitForCanvasGeneration(generation.id, options);
+    options?.onCanvasTask?.(generation.id);
+    return awaitCanvasImage(generation.id, options);
+}
+
+/** Poll a submitted canvas image generation until it settles and download the result as a data URL. */
+export async function awaitCanvasImage(generationId: string, options?: { signal?: AbortSignal }) {
+    const completed = await waitForCanvasGeneration(generationId, options);
     const blob = await readCanvasGenerationBlob(completed, options);
     return { id: nanoid(), dataUrl: await blobToDataUrl(blob) };
 }

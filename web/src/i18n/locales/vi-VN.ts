@@ -338,6 +338,8 @@ export default {
         successCount: "{{count}} thành công",
         failCount: "{{count}} thất bại",
         itemCount: "{{count}} ảnh",
+        running: "Đang tạo",
+        interrupted: "Đã dừng do đóng hoặc tải lại trang",
         untitled: "Chưa đặt tên",
         configFirst: "Hãy hoàn tất cấu hình trước",
         generationFailed: "Tạo thất bại",

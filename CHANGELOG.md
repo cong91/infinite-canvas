@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- [新增] Lịch sử tạo ảnh ghi bản ghi ngay khi bấm Tạo với trạng thái "Đang tạo" (tag xoay, không hiện duration) và tự cập nhật thành công/thất bại khi batch kết thúc; tải lại trang giữa chừng với generation Canvas sẽ tự poll tiếp task trên server để hoàn thiện kết quả thật, lượt tạo trực tiếp không khôi phục được được đánh dấu "đã gián đoạn" thay vì mất dấu vết.
+
 - [修复] Canvas BFF generation worker 限制重试次数与退避：可重试失败（如上游 503）最多尝试 5 次后以 `MAX_RETRY_EXCEEDED` 永久失败，重试按 30s→60s→120s→240s→480s 指数退避，避免单个故障 provider 的任务无限重试并阻塞后续所有生成任务（OVH 上曾因该问题卡死队列数小时）。
 
 - [调整] 重设计 Canvas Provider 设置：移除与 Studio 默认值重复的顶部 Provider/Model 选择行，改为已保存 Provider 的紧凑列表（名称 · 分组 · 掩码 Key）；清理随之失效的 selectedProviderId 状态。

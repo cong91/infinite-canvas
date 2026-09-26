@@ -283,6 +283,8 @@ export default {
         successCount: "{{count}} succeeded",
         failCount: "{{count}} failed",
         itemCount: "{{count}} images",
+        running: "Running",
+        interrupted: "Stopped because the page was closed or reloaded",
         untitled: "Untitled",
         configFirst: "Complete the configuration first",
         generationFailed: "Generation failed",
