@@ -88,10 +88,6 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
     const canvasCatalog = useCanvasProviderStore((state) => state.catalog);
     const canvasProviderStatus = useCanvasProviderStore((state) => state.status);
     const canvasProviderError = useCanvasProviderStore((state) => state.error);
-    const selectedCanvasProviderId = useCanvasProviderStore((state) => state.selectedProviderId);
-    const canvasProviderModels = useCanvasProviderStore((state) => state.modelsByProvider);
-    const modelsLoadingProviderId = useCanvasProviderStore((state) => state.modelsLoadingProviderId);
-    const selectCanvasProvider = useCanvasProviderStore((state) => state.select);
     const loadCanvasProviders = useCanvasProviderStore((state) => state.load);
     const loadCanvasCatalog = useCanvasProviderStore((state) => state.loadCatalog);
     const loadCanvasModels = useCanvasProviderStore((state) => state.loadModels);
@@ -118,9 +114,17 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
     }, [activeTab, canvasAccountStatus, loadCanvasCatalog, loadCanvasProviders]);
 
     useEffect(() => {
-        if (canvasAccountStatus !== "authenticated" || !selectedCanvasProviderId || canvasProviderModels[selectedCanvasProviderId]) return;
-        void loadCanvasModels(selectedCanvasProviderId).catch(() => undefined);
-    }, [canvasAccountStatus, canvasProviderModels, loadCanvasModels, selectedCanvasProviderId]);
+        if (canvasCatalog && !canvasCatalog.keys.length) setCreateKeyMode(true);
+    }, [canvasCatalog]);
+
+    useEffect(() => {
+        if (!createKeyMode || !canvasCatalog) return;
+        const groupsFor = (capability: KeyCapability) => canvasCatalog.groups.filter((item) => (capability === "image" ? item.allowImageGeneration === true : capability === "video" ? item.videoCapable === true : true));
+        if (newKeyGroupId && groupsFor(newKeyCapability).some((item) => item.id === newKeyGroupId)) return;
+        const capability = (["image", "video", "text"] as const).find((cap) => groupsFor(cap).length > 0) ?? newKeyCapability;
+        setNewKeyCapability(capability);
+        setNewKeyGroupId(groupsFor(capability)[0]?.id || "");
+    }, [canvasCatalog, createKeyMode, newKeyCapability, newKeyGroupId]);
 
     const saveConfig = (nextConfig: AiConfig) => {
         (Object.keys(nextConfig) as Array<keyof AiConfig>).forEach((key) => updateConfig(key, nextConfig[key]));
@@ -181,14 +185,6 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
         }
     };
 
-    const saveCanvasProviderModel = async (providerId: string, model: string) => {
-        try {
-            await updateCanvasProvider(providerId, { model });
-        } catch (error) {
-            message.error(error instanceof Error ? error.message : "Không thể lưu model nhà cung cấp");
-        }
-    };
-
     const catalogGroupsByCapability = (capability: KeyCapability) =>
         (canvasCatalog?.groups || []).filter((item) => (capability === "image" ? item.allowImageGeneration === true : capability === "video" ? item.videoCapable === true : true));
     const catalogGroupOptions = catalogGroupsByCapability(newKeyCapability);
@@ -204,7 +200,6 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
         setSavingCanvasProvider(true);
         try {
             const provider = await createCanvasProviderWithNewKey({ name: newKeyName.trim() || `Infinite Canvas - ${newKeyCapability}`, groupId: newKeyGroupId });
-            selectCanvasProvider(provider.id);
             void loadCanvasCatalog(true).catch(() => undefined);
             setCreateKeyMode(false);
             setNewKeyGroupId("");
@@ -365,31 +360,17 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                                             ) : null}
                                             <div className="mt-3 text-xs font-medium text-stone-600 dark:text-stone-300">{t("config.account.savedProviders", { defaultValue: "Canvas providers" })}</div>
                                             {canvasProviders.length ? (
-                                                <div className="mt-2 grid gap-2 md:grid-cols-2">
-                                                    <Form.Item label={t("config.account.providerLabel", { defaultValue: "Provider" })} className="mb-0">
-                                                        <Select
-                                                            className="w-full"
-                                                            value={selectedCanvasProviderId || undefined}
-                                                            options={canvasProviders.map((provider) => ({ value: provider.id, label: `${provider.name}${provider.maskedKey ? ` · ${provider.maskedKey}` : ""}` }))}
-                                                            onChange={selectCanvasProvider}
-                                                        />
-                                                    </Form.Item>
-                                                    <Form.Item label={t("config.account.modelLabel", { defaultValue: "Model" })} className="mb-0">
-                                                        <Select
-                                                            className="w-full"
-                                                            value={canvasProviders.find((provider) => provider.id === selectedCanvasProviderId)?.model || undefined}
-                                                            placeholder={t("config.account.selectModel", { defaultValue: "Select model" })}
-                                                            loading={selectedCanvasProviderId ? modelsLoadingProviderId === selectedCanvasProviderId : false}
-                                                            options={(selectedCanvasProviderId ? canvasProviderModels[selectedCanvasProviderId] || [] : []).map((model) => ({ value: model, label: model }))}
-                                                            onDropdownVisibleChange={(open) => {
-                                                                if (open && selectedCanvasProviderId && !canvasProviderModels[selectedCanvasProviderId]) void loadCanvasModels(selectedCanvasProviderId).catch(() => undefined);
-                                                            }}
-                                                            onChange={(model) => {
-                                                                if (selectedCanvasProviderId) void saveCanvasProviderModel(selectedCanvasProviderId, model);
-                                                            }}
-                                                        />
-                                                    </Form.Item>
-                                                </div>
+                                                <ul className="mt-2 grid gap-2 md:grid-cols-2">
+                                                    {canvasProviders.map((provider) => (
+                                                        <li key={provider.id} className="flex min-w-0 items-center justify-between gap-2 rounded-md border border-stone-200 px-3 py-2 dark:border-stone-800">
+                                                            <span className="truncate text-sm">{provider.name}</span>
+                                                            <span className="shrink-0 truncate text-xs text-stone-500">
+                                                                {provider.group ? `${provider.group} · ` : ""}
+                                                                {provider.maskedKey}
+                                                            </span>
+                                                        </li>
+                                                    ))}
+                                                </ul>
                                             ) : (
                                                 <div className="mt-1 text-xs text-stone-500">{t("config.account.emptyProviders", { defaultValue: "No Canvas providers saved yet." })}</div>
                                             )}
@@ -397,7 +378,7 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                                                 <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                                                     <div className="text-xs text-stone-500">
                                                         {createKeyMode
-                                                            ? t("config.account.createKeyHint", { defaultValue: "A new Sub2API key will be created in the selected group, without quota or expiry limits." })
+                                                            ? (canvasCatalog && !canvasCatalog.groups.length ? t("config.account.noGroupsHint", { defaultValue: "Your Sub2API account has no available groups yet. Join a group in Sub2API first, then create the key here." }) : t("config.account.createKeyHint", { defaultValue: "A new Sub2API key will be created in the selected group, without quota or expiry limits." }))
                                                             : (canvasCatalog?.keys.length ? "" : t("config.account.emptyCatalogHint", { defaultValue: "No Sub2API API key yet? Create one right here." }))}
                                                     </div>
                                                     <Button size="small" type="text" icon={createKeyMode ? undefined : <Plus className="size-3.5" />} onClick={() => setCreateKeyMode((mode) => !mode)}>
@@ -405,7 +386,7 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                                                     </Button>
                                                 </div>
                                             ) : null}
-                                            <div className="mt-3 grid gap-2 md:grid-cols-[150px_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
+                                            <div className={`mt-3 grid gap-2 md:items-end ${canvasProviderSource === "direct" || (canvasProviderSource === "sub2api" && createKeyMode) ? "md:grid-cols-[150px_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]" : "md:grid-cols-[150px_minmax(0,1fr)_minmax(0,1fr)_auto]"}`}>
                                                 <Form.Item label="Nguồn" className="mb-0">
                                                     <Select className="w-full" value={canvasProviderSource} onChange={setCanvasProviderSource} options={[{ value: "sub2api", label: "Sub2API" }, { value: "direct", label: "Third-party" }]} />
                                                 </Form.Item>

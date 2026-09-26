@@ -925,6 +925,7 @@ export default {
             createKeyAndProvider: "Create key & save provider",
             emptyCatalogHint: "No Sub2API API key yet? Create one right here.",
             createKeyHint: "A new Sub2API key will be created in the selected group, without quota or expiry limits.",
+            noGroupsHint: "Your Sub2API account has no available groups yet. Get added to a group in Sub2API first, then come back here to create a key.",
         },
         proxy: {
             title: "Local proxy",

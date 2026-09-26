@@ -8,7 +8,6 @@ type StudioCapability = "image" | "video";
 
 type CanvasProviderStore = {
     providers: CanvasProvider[];
-    selectedProviderId: string | null;
     catalog: ProviderCatalog | null;
     providersLoaded: boolean;
     catalogLoaded: boolean;
@@ -25,7 +24,6 @@ type CanvasProviderStore = {
     createWithNewKey: (input: { name: string; groupId: string }) => Promise<CanvasProvider>;
     update: (providerId: string, input: ProviderPatch) => Promise<CanvasProvider>;
     remove: (providerId: string) => Promise<void>;
-    select: (providerId: string) => void;
     setStudioModel: (capability: StudioCapability, value: string) => void;
     clear: () => void;
 };
@@ -37,7 +35,6 @@ let requestGeneration = 0;
 
 export const useCanvasProviderStore = create<CanvasProviderStore>()((set, get) => ({
     providers: [],
-    selectedProviderId: null,
     catalog: null,
     providersLoaded: false,
     catalogLoaded: false,
@@ -60,7 +57,6 @@ export const useCanvasProviderStore = create<CanvasProviderStore>()((set, get) =
                     providers,
                     providersLoaded: true,
                     modelsByProvider: force ? {} : Object.fromEntries(Object.entries(state.modelsByProvider).filter(([providerId]) => providers.some((provider) => provider.id === providerId))),
-                    selectedProviderId: providers.some((item) => item.id === state.selectedProviderId && item.status === "active") ? state.selectedProviderId : null,
                     status: "ready",
                     error: null,
                 }));
@@ -145,15 +141,14 @@ export const useCanvasProviderStore = create<CanvasProviderStore>()((set, get) =
     },
     remove: async (providerId) => {
         await canvasBff.deleteProvider(providerId);
-        set((state) => ({ providers: state.providers.filter((item) => item.id !== providerId), selectedProviderId: state.selectedProviderId === providerId ? null : state.selectedProviderId, error: null }));
+        set((state) => ({ providers: state.providers.filter((item) => item.id !== providerId), error: null }));
     },
-    select: (providerId) => set((state) => ({ selectedProviderId: state.providers.some((item) => item.id === providerId && item.status === "active") ? providerId : state.selectedProviderId })),
     setStudioModel: (capability, value) => set((state) => ({ studioModels: { ...state.studioModels, [capability]: value } })),
     clear: () => {
         requestGeneration += 1;
         providersRequest = null;
         catalogRequest = null;
         modelsRequests.clear();
-        set({ providers: [], selectedProviderId: null, catalog: null, providersLoaded: false, catalogLoaded: false, modelsByProvider: {}, modelsLoadingProviderId: null, modelsLoadingProviderIds: [], studioModels: {}, status: "idle", error: null });
+        set({ providers: [], catalog: null, providersLoaded: false, catalogLoaded: false, modelsByProvider: {}, modelsLoadingProviderId: null, modelsLoadingProviderIds: [], studioModels: {}, status: "idle", error: null });
     },
 }));

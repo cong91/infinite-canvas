@@ -886,6 +886,7 @@ export default {
             createKeyAndProvider: "创建 Key 并保存提供商",
             emptyCatalogHint: "还没有 Sub2API API Key？可以在这里直接创建。",
             createKeyHint: "将在所选分组中创建新的 Sub2API API Key，不设置额度与有效期限制。",
+            noGroupsHint: "你的 Sub2API 账号还没有可用分组。请先在 Sub2API 中加入一个分组，再回到这里创建 Key。",
         },
         proxy: {
             title: "本地代理",

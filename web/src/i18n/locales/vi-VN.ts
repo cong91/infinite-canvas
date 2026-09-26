@@ -1023,6 +1023,7 @@ export default {
             createKeyAndProvider: "Tạo key & lưu provider",
             emptyCatalogHint: "Bạn chưa có API key Sub2API nào? Tạo ngay tại đây.",
             createKeyHint: "API key Sub2API mới sẽ được tạo trong nhóm đã chọn, không giới hạn hạn mức và thời hạn.",
+            noGroupsHint: "Tài khoản Sub2API của bạn chưa thuộc nhóm nào khả dụng. Hãy được thêm vào một nhóm trên Sub2API trước, rồi quay lại đây để tạo key.",
         },
         proxy: {
             title: "Proxy cục bộ",
