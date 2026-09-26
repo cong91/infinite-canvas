@@ -475,6 +475,61 @@ test("Sub2API video adapter forwards reference images in the gateway contract", 
   ]);
 });
 
+test("Sub2API video adapter routes a source video through the edits contract", async () => {
+  const { providers, provider } = fixture(undefined, "sub2api-video-key-edit");
+  let request: Request | undefined;
+  const adapter = new HttpGenerationProvider({
+    baseUrl: "https://sub2api.example.test",
+    providers,
+    secretBox,
+    fetchImpl: async (input, init) => {
+      request = new Request(input, init);
+      if (request.url.endsWith("/v1/videos/edits"))
+        return new Response(JSON.stringify({ request_id: "grok-task-edit" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      return new Response(
+        JSON.stringify({ status: "running", progress: 10 }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    },
+  });
+
+  await adapter.start({
+    id: "generation-video-edit",
+    accountId: "account-a",
+    projectId: "project-1",
+    providerId: provider.id,
+    kind: "video",
+    input: {
+      prompt: "restyle this clip",
+      model: "grok-imagine-video-1.5",
+      referenceVideos: ["data:video/mp4;base64,clip-a"],
+      referenceAudios: ["data:audio/mpeg;base64,sound-a"],
+    },
+    inputHash: "hash-video-edit",
+    clientRequestId: "request-video-edit",
+    status: "running",
+    progress: 0,
+    attempt: 0,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+
+  assert.equal(request?.url, "https://sub2api.example.test/v1/videos/edits");
+  const body = (await request?.json()) as {
+    video?: { url?: string };
+    audio?: { url?: string };
+    referenceVideos?: unknown;
+    referenceAudios?: unknown;
+  };
+  assert.deepEqual(body.video, { url: "data:video/mp4;base64,clip-a" });
+  assert.deepEqual(body.audio, { url: "data:audio/mpeg;base64,sound-a" });
+  assert.equal(body.referenceVideos, undefined);
+  assert.equal(body.referenceAudios, undefined);
+});
+
 test("video adapter accepts nested request IDs returned by Sub2API", async () => {
   const { providers, provider } = fixture(undefined, "sub2api-video-key-nested");
   const requests: Request[] = [];

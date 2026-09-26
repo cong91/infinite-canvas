@@ -200,9 +200,16 @@ export class HttpGenerationProvider implements GenerationProvider {
     generation: GenerationRecord,
   ): Promise<ProviderResult> {
     const intent = buildGenerationIntent(generation);
+    // A source video turns the request into a Grok video edit; the gateway
+    // exposes that contract on /v1/videos/edits instead of generations.
+    const sub2ApiEndpoint = intent.parameters.video
+      ? "/v1/videos/edits"
+      : "/v1/videos/generations";
     const response = await this.request(
       context.baseUrl,
-      context.protocol === "sub2api" ? "/v1/videos/generations" : "/v1/videos",
+      context.protocol === "sub2api"
+        ? sub2ApiEndpoint
+        : "/v1/videos",
       context.secret,
       {
         method: "POST",

@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-- [修复] 生成请求携带参考图：Canvas 账号路径下图片编辑与视频生成现在把参考图（base64）随生成请求发送到 BFF，BFF 图片有参考图时改走 `/v1/images/edits` 并透传 `images[]`、视频透传 `reference_images` 到 Sub2API 网关；不再把参考图静默丢弃导致生成结果与参考图完全无关。同步把 Nginx `/api/` 与 BFF 的请求体上限从 1MB 提升到 20MB 以容纳 base64 参考图。
+- [修复] 生成请求携带参考图：Canvas 账号路径下图片编辑与视频生成现在把参考图（base64）随生成请求发送到 BFF，BFF 图片有参考图时改走 `/v1/images/edits` 并透传 `images[]`、视频透传 `reference_images` 到 Sub2API 网关；不再把参考图静默丢弃导致生成结果与参考图完全无关。同步把 Nginx `/api/` 与 BFF 的请求体上限从 1MB 提升到 64MB 以容纳 base64 参考图。
+- [新增] Canvas 账号视频生成支持参考视频/参考音频透传：连接了源视频节点时请求改走 `/v1/videos/edits`（`video: {url}`，Grok 视频编辑合约），参考音频以 `audio: {url}` 随请求发送；同时连接视频与参考图时以视频为源。
 
 - [新增] Lịch sử tạo ảnh ghi bản ghi ngay khi bấm Tạo với trạng thái "Đang tạo" (tag xoay, không hiện duration) và tự cập nhật thành công/thất bại khi batch kết thúc; tải lại trang giữa chừng với generation Canvas sẽ tự poll tiếp task trên server để hoàn thiện kết quả thật, lượt tạo trực tiếp không khôi phục được được đánh dấu "đã gián đoạn" thay vì mất dấu vết.
 

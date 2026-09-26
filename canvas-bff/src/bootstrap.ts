@@ -24,9 +24,9 @@ export async function createCanvasApplication(
     const http = app.getHttpAdapter().getInstance();
     http.disable("x-powered-by");
     app.use(cookieParser());
-    // canvas_generations.input may carry base64 reference images; keep this in
-    // sync with client_max_body_size in deploy/ovh-sing/nginx.canvas.v-claw.org.conf.
-    app.use(express.json({ limit: "20mb" }));
+    // canvas_generations.input may carry base64 reference images/videos; keep
+    // this in sync with client_max_body_size in deploy/ovh-sing/nginx.canvas.v-claw.org.conf.
+    app.use(express.json({ limit: "64mb" }));
     app.enableShutdownHooks();
     return app;
 }

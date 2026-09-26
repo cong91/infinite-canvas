@@ -73,7 +73,9 @@ function videoTaskFailed(message: string) {
 export async function createVideoGenerationTask(config: AiConfig, prompt: string, references: ReferenceImage[] = [], options?: VideoMediaOptions): Promise<VideoGenerationTask> {
     if (isCanvasAccountAuthenticated()) {
         const referenceImages = await Promise.all(references.map((image) => imageToDataUrl(image)));
-        const generation = await submitCanvasGeneration("video", config, prompt, { seconds: config.videoSeconds, size: config.size, quality: config.vquality, generateAudio: config.videoGenerateAudio, watermark: config.videoWatermark, referenceImages }, options);
+        const referenceVideos = await Promise.all((options?.videos || []).map((video) => referenceMediaDataUrl(video, "invalidReferenceVideo", options)));
+        const referenceAudios = await Promise.all((options?.audios || []).map((audio) => referenceMediaDataUrl(audio, "invalidReferenceAudio", options)));
+        const generation = await submitCanvasGeneration("video", config, prompt, { seconds: config.videoSeconds, size: config.size, quality: config.vquality, generateAudio: config.videoGenerateAudio, watermark: config.videoWatermark, referenceImages, referenceVideos, referenceAudios }, options);
         return { id: generation.id, provider: "canvas", model: config.model || config.videoModel };
     }
     const selectedModel = (config.model || config.videoModel).trim();
@@ -313,7 +315,7 @@ async function fileToGeminiInline(file: File): Promise<GeminiInlineData> {
     return parseDataUrlInline(await readFileAsDataUrl(file), file.type || "application/octet-stream");
 }
 
-async function referenceMediaToFile(item: { name: string; type?: string; url?: string; storageKey?: string }, fallbackName: string, errorKey: "invalidReferenceVideo" | "invalidReferenceAudio", options?: RequestOptions) {
+async function referenceMediaBlob(item: { name: string; type?: string; url?: string; storageKey?: string }, errorKey: "invalidReferenceVideo" | "invalidReferenceAudio", options?: RequestOptions) {
     let blob = item.storageKey ? await getMediaBlob(item.storageKey) : null;
     if (!blob) {
         const url = item.storageKey ? await resolveMediaUrl(item.storageKey, item.url || "") : item.url || "";
@@ -326,7 +328,22 @@ async function referenceMediaToFile(item: { name: string; type?: string; url?: s
         }
     }
     if (!blob.size) throw new Error(apiText(errorKey));
+    return blob;
+}
+
+async function referenceMediaToFile(item: { name: string; type?: string; url?: string; storageKey?: string }, fallbackName: string, errorKey: "invalidReferenceVideo" | "invalidReferenceAudio", options?: RequestOptions) {
+    const blob = await referenceMediaBlob(item, errorKey, options);
     return new File([blob], item.name || fallbackName, { type: item.type || blob.type || "application/octet-stream" });
+}
+
+async function referenceMediaDataUrl(item: { name: string; type?: string; url?: string; storageKey?: string }, errorKey: "invalidReferenceVideo" | "invalidReferenceAudio", options?: RequestOptions) {
+    const blob = await referenceMediaBlob(item, errorKey, options);
+    return new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(new Error(apiText(errorKey)));
+        reader.readAsDataURL(blob);
+    });
 }
 
 function normalizeVideoSeconds(value: string) {

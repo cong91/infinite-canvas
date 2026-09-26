@@ -23,6 +23,16 @@ export function buildGenerationIntent(
       parameters.reference_images = imageReferencePayload(value);
       continue;
     }
+    if (key === "referenceVideos") {
+      const video = firstMediaPayload(value);
+      if (video) parameters.video = video;
+      continue;
+    }
+    if (key === "referenceAudios") {
+      const audio = firstMediaPayload(value);
+      if (audio) parameters.audio = audio;
+      continue;
+    }
     parameters[canonicalParameterName(key)] = value;
   }
 
@@ -93,6 +103,16 @@ function imageReferencePayload(value: unknown) {
   return value
     .filter((item): item is string => typeof item === "string" && item.trim() !== "")
     .map((url) => ({ image_url: url }));
+}
+
+/** Grok media contract: the source video/audio is a single {url} object. */
+function firstMediaPayload(value: unknown) {
+  const urls = Array.isArray(value)
+    ? value.filter(
+        (item): item is string => typeof item === "string" && item.trim() !== "",
+      )
+    : [];
+  return urls.length ? { url: urls[0] } : undefined;
 }
 
 function defaultModel(kind: GenerationRecord["kind"]) {
