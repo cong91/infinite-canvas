@@ -18,6 +18,7 @@ import { nanoid } from "nanoid";
 import { formatBytes, formatDuration } from "@/lib/image-utils";
 import { requestEdit, requestGeneration } from "@/services/api/image";
 import { awaitCanvasImage } from "@/services/api/canvas-generation";
+import { restoreCanvasImage } from "@/lib/canvas/canvas-generation-helpers";
 import { deleteStoredImages, ensureImagePreview, getImagePreviewRevision, previewUrlFor, resolveImageUrl, subscribeImagePreviews, uploadImage } from "@/services/image-storage";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { useWorkbenchAgentStore } from "@/stores/use-workbench-agent-store";
@@ -30,6 +31,7 @@ type GeneratedImage = {
     id: string;
     dataUrl: string;
     storageKey?: string;
+    assetId?: string;
     durationMs: number;
     width: number;
     height: number;
@@ -246,18 +248,20 @@ export default function ImagePage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [autoRunToken]);
 
-    const downloadImage = (image: GeneratedImage, index: number) => {
-        saveAs(image.dataUrl, `image-${index + 1}.png`);
+    const resolveWorkbenchImage = async (image: GeneratedImage) => restoreCanvasImage(image.storageKey, image.assetId, image.dataUrl);
+
+    const downloadImage = async (image: GeneratedImage, index: number) => {
+        saveAs(await resolveWorkbenchImage(image), `image-${index + 1}.png`);
     };
 
     const addResultToReferences = async (image: GeneratedImage, index: number) => {
-        const stored = await uploadImage(image.dataUrl);
+        const stored = await uploadImage(await resolveWorkbenchImage(image));
         setReferences((value) => [...value, { id: nanoid(), name: `result-${index + 1}.png`, type: stored.mimeType, dataUrl: stored.url, storageKey: stored.storageKey }]);
         message.success(t("imageWorkbench.addedReference"));
     };
 
     const saveResultToAssets = async (image: GeneratedImage, index: number) => {
-        const stored = await uploadImage(image.dataUrl);
+        const stored = await uploadImage(await resolveWorkbenchImage(image));
         addAsset({
             kind: "image",
             title: t("imageWorkbench.resultTitle", { count: index + 1 }),
@@ -340,7 +344,7 @@ export default function ImagePage() {
                 taskIds.map(async (taskId, index) => {
                     try {
                         const image = await awaitCanvasImage(taskId);
-                        const nextImage = await materializeImage(image.id, image.dataUrl, startedAtMs);
+                        const nextImage = await materializeImage(image.id, image.dataUrl, startedAtMs, image.assetId);
                         setResults((value) => updateResultAt(value, index, { status: "success", image: nextImage }));
                         return nextImage;
                     } catch (error) {
@@ -409,12 +413,13 @@ export default function ImagePage() {
         saveLog(next);
     };
 
-    const materializeImage = async (imageId: string, dataUrl: string, startedAtMs: number): Promise<GeneratedImage> => {
+    const materializeImage = async (imageId: string, dataUrl: string, startedAtMs: number, assetId?: string): Promise<GeneratedImage> => {
         const stored = await uploadImage(dataUrl);
         return {
             id: imageId,
             dataUrl: stored.url,
             ...(stored.storageKey ? { storageKey: stored.storageKey } : {}),
+            ...(assetId ? { assetId } : {}),
             durationMs: Date.now() - startedAtMs,
             width: stored.width,
             height: stored.height,
@@ -429,7 +434,7 @@ export default function ImagePage() {
             const result = snapshot.references.length ? await requestEdit(snapshot.config, snapshot.text, snapshot.references, { onCanvasTask: trackCanvasTask }) : await requestGeneration(snapshot.config, snapshot.text, { onCanvasTask: trackCanvasTask });
             const image = result[0];
             if (!image) throw new Error(t("imageWorkbench.missingResult"));
-            const nextImage = await materializeImage(image.id, image.dataUrl, itemStartedAt);
+            const nextImage = await materializeImage(image.id, image.dataUrl, itemStartedAt, image.assetId);
             setResults((value) => updateResultAt(value, index, { status: "success", image: nextImage }));
             return nextImage;
         } catch (error) {
@@ -698,9 +703,9 @@ function ResultImageCard({
 }: {
     image: GeneratedImage;
     index: number;
-    onEdit: (image: GeneratedImage, index: number) => void;
-    onDownload: (image: GeneratedImage, index: number) => void;
-    onSaveAsset: (image: GeneratedImage, index: number) => void;
+    onEdit: (image: GeneratedImage, index: number) => void | Promise<void>;
+    onDownload: (image: GeneratedImage, index: number) => void | Promise<void>;
+    onSaveAsset: (image: GeneratedImage, index: number) => void | Promise<void>;
 }) {
     const { t } = useTranslation();
     useSyncExternalStore(subscribeImagePreviews, getImagePreviewRevision);

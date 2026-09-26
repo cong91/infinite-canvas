@@ -1,7 +1,9 @@
 import { defaultConfig, resolveModelForCapability, type AiConfig } from "@/stores/use-config-store";
 import i18n from "@/i18n";
-import { ensureImagePreview, resolveImageUrl, uploadImage } from "@/services/image-storage";
+import { ensureImagePreview, resolveImageUrl, setImageBlob, uploadImage } from "@/services/image-storage";
 import { resolveMediaUrl } from "@/services/file-storage";
+import { canvasBff } from "@/services/api/canvas-bff";
+import { isCanvasAccountAuthenticated } from "@/services/api/canvas-generation";
 import { imageMetadata, referenceUrl } from "@/lib/canvas/canvas-node-factory";
 import type { NodeGenerationInput } from "@/components/canvas/canvas-node-generation";
 import type { CanvasNodeGenerationMode } from "@/components/canvas/canvas-node-prompt-panel";
@@ -42,6 +44,19 @@ export async function resolveMetadataReferences(metadata: CanvasNodeMetadata) {
     return references.every(Boolean) ? (references as ReferenceImage[]) : null;
 }
 
+// 优先读本地缓存；缺失时（换设备/清浏览器数据）通过 BFF asset 引用从云端媒体存储拉回并重新落本地缓存。
+export async function restoreCanvasImage(storageKey: string | undefined, assetId: string | undefined, fallback: string) {
+    const local = storageKey ? await resolveImageUrl(storageKey, "") : "";
+    if (local) return local;
+    if (!storageKey || !assetId || !isCanvasAccountAuthenticated()) return fallback;
+    const asset = await canvasBff.getAsset(assetId).catch(() => undefined);
+    if (!asset?.signedUrl) return fallback;
+    const blob = await fetch(asset.signedUrl)
+        .then((response) => (response.ok ? response.blob() : undefined))
+        .catch(() => undefined);
+    return blob ? setImageBlob(storageKey, blob) : fallback;
+}
+
 export async function hydrateCanvasImages(nodes: CanvasNodeData[]) {
     return Promise.all(
         nodes.map(async (node) => {
@@ -53,12 +68,12 @@ export async function hydrateCanvasImages(nodes: CanvasNodeData[]) {
                 (metadata.images || []).map(async (image) => {
                     if (!image.content) return image;
                     void ensureImagePreview(image.storageKey);
-                    return { ...image, content: await resolveImageUrl(image.storageKey, image.content) };
+                    return { ...image, content: await restoreCanvasImage(image.storageKey, image.assetId, image.content) };
                 }),
             );
             if (metadata.storageKey) {
                 void ensureImagePreview(metadata.storageKey);
-                return { ...node, metadata: { ...metadata, content: await resolveImageUrl(metadata.storageKey, content), images } };
+                return { ...node, metadata: { ...metadata, content: await restoreCanvasImage(metadata.storageKey, metadata.assetId, content), images } };
             }
             if (!content.startsWith("data:image/")) return node;
             return { ...node, metadata: { ...metadata, ...imageMetadata(await uploadImage(content)) } };

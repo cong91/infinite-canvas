@@ -13,6 +13,8 @@ import { isCanvasAccountAuthenticated, requestCanvasImage, requestCanvasImageEdi
 
 const apiText = (key: string, options?: Record<string, unknown>) => i18n.t(`apiErrors.${key}`, options);
 
+export type ImageGenerationResult = { id: string; dataUrl: string; assetId?: string };
+
 export type AiTextMessage = {
     role: "system" | "user" | "assistant";
     content: string | Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }>;
@@ -251,7 +253,7 @@ function parseImagePayload(payload: ImageApiResponse) {
     }
     // Support data, images, and results response fields used by different APIs.
     const imageList = payload.data || ((payload as Record<string, unknown>).images as Array<Record<string, unknown>> | undefined) || ((payload as Record<string, unknown>).results as Array<Record<string, unknown>> | undefined) || [];
-    const images = imageList
+    const images: ImageGenerationResult[] = imageList
         .map(resolveImageSource)
         .filter((value): value is string => Boolean(value))
         .map((dataUrl) => ({ id: nanoid(), dataUrl }));
@@ -682,7 +684,7 @@ async function requestGeminiImagesOnce(config: AiConfig, prompt: string, referen
 
 function parseGeminiImagePayload(payload: GeminiPayload) {
     validateGeminiPayload(payload);
-    const images =
+    const images: ImageGenerationResult[] =
         payload.candidates
             ?.flatMap((candidate) => candidate.content?.parts || [])
             .map((part) => {
@@ -715,7 +717,7 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
                 params: { size: requestSize, quality, count: n, ...(background ? { background } : {}) },
                 signal: options?.signal,
             });
-            return normalizePluginImages(result).map((dataUrl) => ({ id: nanoid(), dataUrl }));
+            return normalizePluginImages(result).map((dataUrl): ImageGenerationResult => ({ id: nanoid(), dataUrl }));
         } catch (error) {
             throw new Error(readAxiosError(error, apiText("requestFailed")));
         }
@@ -778,7 +780,7 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
                 params: { size: requestSize, quality, count: n, ...(background ? { background } : {}) },
                 signal: options?.signal,
             });
-            return normalizePluginImages(result).map((dataUrl) => ({ id: nanoid(), dataUrl }));
+            return normalizePluginImages(result).map((dataUrl): ImageGenerationResult => ({ id: nanoid(), dataUrl }));
         } catch (error) {
             throw new Error(readAxiosError(error, apiText("requestFailed")));
         }

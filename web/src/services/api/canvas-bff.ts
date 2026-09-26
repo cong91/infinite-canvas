@@ -137,6 +137,7 @@ export const canvasBff = {
     updateProject: (projectId: string, input: { name?: string; data?: Record<string, unknown>; revision?: number }) => request<CanvasProject>(`/v1/projects/${encodeURIComponent(projectId)}`, { method: "PATCH", body: input }),
     deleteProject: (projectId: string) => request<void>(`/v1/projects/${encodeURIComponent(projectId)}`, { method: "DELETE" }),
     listAssets: (projectId?: string) => request<CanvasAsset[]>(`/v1/assets${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ""}`),
+    getAsset: (assetId: string) => request<CanvasAsset>(`/v1/assets/${encodeURIComponent(assetId)}`),
     listGenerations: () => request<CanvasGeneration[]>("/v1/generations"),
     getGeneration: (generationId: string) => request<CanvasGeneration>(`/v1/generations/${encodeURIComponent(generationId)}`),
     createGeneration: (input: { projectId: string; providerId: string; kind: CanvasGeneration["kind"]; input?: Record<string, unknown>; clientRequestId: string }) => request<CanvasGeneration>("/v1/generations", { method: "POST", body: input }),

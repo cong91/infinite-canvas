@@ -82,11 +82,11 @@ export async function requestCanvasImageEdit(config: AiConfig, prompt: string, r
     return awaitCanvasImage(generation.id, options);
 }
 
-/** Poll a submitted canvas image generation until it settles and download the result as a data URL. */
+/** Poll a submitted canvas image generation until it settles and download the result as a data URL. assetId links to the cloud-cached asset in BFF storage. */
 export async function awaitCanvasImage(generationId: string, options?: { signal?: AbortSignal }) {
     const completed = await waitForCanvasGeneration(generationId, options);
     const blob = await readCanvasGenerationBlob(completed, options);
-    return { id: nanoid(), dataUrl: await blobToDataUrl(blob) };
+    return { id: nanoid(), dataUrl: await blobToDataUrl(blob), assetId: completed.outputAssetId };
 }
 
 export async function requestCanvasAudio(config: AiConfig, prompt: string, options?: { signal?: AbortSignal }) {
