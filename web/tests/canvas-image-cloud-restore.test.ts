@@ -94,6 +94,25 @@ test("hydrate restores a missing image from the cloud asset when canvas-authenti
     expect(requests.some((url) => url === "https://media.test/signed")).toBe(true);
 });
 
+test("hydrate falls back to matching a legacy node by exact byte size against account assets", async () => {
+    await setAccountStatus("authenticated");
+    const { hydrateCanvasImages } = await import("../src/lib/canvas/canvas-generation-helpers");
+    const node = imageNode({ content: deadBlob, storageKey: "image:legacy", bytes: 1332350, status: "success", mimeType: "image/png" });
+    responses.set("/api/v1/assets", {
+        data: [
+            { id: "asset-small", kind: "image", metadata: { size: 999 }, signedUrl: "https://media.test/wrong" },
+            { id: "asset-match", kind: "image", metadata: { size: 1332350 }, signedUrl: "https://media.test/legacy" },
+        ],
+    });
+    responses.set("https://media.test/legacy", { data: "binary" });
+
+    const [restored] = await hydrateCanvasImages([node]);
+    expect(restored.metadata?.content).toContain("blob:");
+    expect(requests.some((url) => url === "/api/v1/assets")).toBe(true);
+    expect(requests.some((url) => url === "https://media.test/legacy")).toBe(true);
+    expect(requests.some((url) => url === "https://media.test/wrong")).toBe(false);
+});
+
 test("hydrate falls back to stored content without an asset link or session", async () => {
     await setAccountStatus("unauthenticated");
     const { hydrateCanvasImages } = await import("../src/lib/canvas/canvas-generation-helpers");

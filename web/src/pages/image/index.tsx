@@ -248,7 +248,7 @@ export default function ImagePage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [autoRunToken]);
 
-    const resolveWorkbenchImage = async (image: GeneratedImage) => restoreCanvasImage(image.storageKey, image.assetId, image.dataUrl);
+    const resolveWorkbenchImage = async (image: GeneratedImage) => restoreCanvasImage(image.storageKey, image.assetId, image.dataUrl, image.bytes);
 
     const downloadImage = async (image: GeneratedImage, index: number) => {
         saveAs(await resolveWorkbenchImage(image), `image-${index + 1}.png`);

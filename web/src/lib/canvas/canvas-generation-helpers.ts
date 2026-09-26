@@ -2,7 +2,7 @@ import { defaultConfig, resolveModelForCapability, type AiConfig } from "@/store
 import i18n from "@/i18n";
 import { ensureImagePreview, resolveImageUrl, setImageBlob, uploadImage } from "@/services/image-storage";
 import { resolveMediaUrl } from "@/services/file-storage";
-import { canvasBff } from "@/services/api/canvas-bff";
+import { canvasBff, type CanvasAsset } from "@/services/api/canvas-bff";
 import { isCanvasAccountAuthenticated } from "@/services/api/canvas-generation";
 import { imageMetadata, referenceUrl } from "@/lib/canvas/canvas-node-factory";
 import type { NodeGenerationInput } from "@/components/canvas/canvas-node-generation";
@@ -44,12 +44,28 @@ export async function resolveMetadataReferences(metadata: CanvasNodeMetadata) {
     return references.every(Boolean) ? (references as ReferenceImage[]) : null;
 }
 
+// assetId 缺失的旧节点（修复上线前生成）按文件字节数在云端资产里回查：客户端缓存的是
+// BFF 存储对象的原始字节，blob.size 与 asset.metadata.size 完全相等，可作精确匹配键。
+let assetSizeIndexPromise: Promise<Map<number, CanvasAsset>> | undefined;
+
+function assetBySizeIndex() {
+    assetSizeIndexPromise ??= canvasBff
+        .listAssets()
+        .then((assets) => new Map(assets.filter((asset) => asset.kind === "image" && asset.metadata?.size).map((asset) => [Number(asset.metadata.size), asset])))
+        .catch(() => {
+            assetSizeIndexPromise = undefined;
+            return new Map<number, CanvasAsset>();
+        });
+    return assetSizeIndexPromise;
+}
+
 // 优先读本地缓存；缺失时（换设备/清浏览器数据）通过 BFF asset 引用从云端媒体存储拉回并重新落本地缓存。
-export async function restoreCanvasImage(storageKey: string | undefined, assetId: string | undefined, fallback: string) {
+export async function restoreCanvasImage(storageKey: string | undefined, assetId: string | undefined, fallback: string, bytes = 0) {
     const local = storageKey ? await resolveImageUrl(storageKey, "") : "";
     if (local) return local;
-    if (!storageKey || !assetId || !isCanvasAccountAuthenticated()) return fallback;
-    const asset = await canvasBff.getAsset(assetId).catch(() => undefined);
+    if (!storageKey || !isCanvasAccountAuthenticated()) return fallback;
+    let asset = assetId ? await canvasBff.getAsset(assetId).catch(() => undefined) : undefined;
+    if (!asset && bytes) asset = (await assetBySizeIndex()).get(bytes);
     if (!asset?.signedUrl) return fallback;
     const blob = await fetch(asset.signedUrl)
         .then((response) => (response.ok ? response.blob() : undefined))
@@ -68,12 +84,12 @@ export async function hydrateCanvasImages(nodes: CanvasNodeData[]) {
                 (metadata.images || []).map(async (image) => {
                     if (!image.content) return image;
                     void ensureImagePreview(image.storageKey);
-                    return { ...image, content: await restoreCanvasImage(image.storageKey, image.assetId, image.content) };
+                    return { ...image, content: await restoreCanvasImage(image.storageKey, image.assetId, image.content, image.bytes) };
                 }),
             );
             if (metadata.storageKey) {
                 void ensureImagePreview(metadata.storageKey);
-                return { ...node, metadata: { ...metadata, content: await restoreCanvasImage(metadata.storageKey, metadata.assetId, content), images } };
+                return { ...node, metadata: { ...metadata, content: await restoreCanvasImage(metadata.storageKey, metadata.assetId, content, metadata.bytes), images } };
             }
             if (!content.startsWith("data:image/")) return node;
             return { ...node, metadata: { ...metadata, ...imageMetadata(await uploadImage(content)) } };
