@@ -96,3 +96,53 @@
 - Agent 对话消息必须同时按 `threadId`、`turnId` 和 `itemId` 归属；实时事件只用于补充未物化的 turn，历史快照成为权威后不得重复合并同一条消息。
 - Agent 通信协议版本与消息存储版本必须独立管理；消息存储格式升级时必须先备份再迁移，遇到未知版本、损坏清单或冲突备份时拒绝覆盖原文件，不得按记录数量或文件大小静默裁剪历史元数据。
 - 本地启动或浏览器验收时不要关闭用户已经打开的浏览器窗口或标签页；需要自动化验证时使用独立测试页面，避免打断用户当前页面和对话状态。
+
+## Coding Standards (apply strictly)
+
+- **Source:** LLM Wiki cross-language cookbook（vault: `C:\Users\mrc\Documents\projects\agent-wiki`，layout=root）。以下规则由该 cookbook 蒸馏；与上文仓库自有规则冲突时，仓库规则优先（repo-first override）。
+
+### 结构规则（所有语言强制）
+
+- 一个文件 = 一个职责，按单一关注点命名；内聚优先于按类型分文件，同一关注点的类型、函数、测试可以共存于一个模块。
+- **拆分信号（任一出现即必须提出拆分建议）**：
+  1. **多角色身份** — 文件对"这个文件做什么"有多个答案且没有单一主答案。
+  2. **段落标题导航** — 必须滚过无关的顶层段落才能到达要改的代码。
+  3. **无关堆叠** — 新加的代码与文件的主要导出或命名关注点无关。
+  4. **跨域导入面** — 文件从许多不相关子系统导入，超过单一职责应触碰的域数量。
+  5. **反复多处编辑** — 同一文件被不相关任务反复修改不同段落。
+  6. **上帝符号** — 单个类、函数或文件处理多于一个输入域或输出形态。
+- 触发信号时在职责边界（自然接缝）拆分，不按机械行数拆；行数是滞后指标。200 行文件若服务两个域也该拆，1500 行文件若每段服务同一职责可以不拆。
+- 见到即拒绝的反模式：`utils`/`helpers`/`common`/`misc`/`shared` 大杂烩模块（一旦长出名字承载不了的内容立即拆分或重命名）；无主身份的抓包式导出面；源码已拆分而测试堆成单个巨型回归文件；往已出现拆分信号的模块上"再加一个函数"。
+- 本仓库已有清晰模块边界约定（如画布页面/组件/状态/工具的目录划分、admin 页面私有组件目录），遵循仓库约定优先于上述启发式；无约定处以上述信号为底线。
+
+### 升级约定（escalation covenant，强制 agent 行为）
+
+收尾任何编码轮次前，必须扫描 diff 触及的每个文件的结构。若任一拆分信号出现：
+1. 在同一轮中提出拆分建议，指明拟拆分的接缝（例如"把 X 抽成独立模块，让 Y 保持单一职责"）。
+2. 暂停等用户决定；不得静默重构他人仓库，也不得静默留着违规。
+3. 用户拒绝拆分时，在文件头部写一行简短备注记录理由（如 `// ai-note: split declined because <reason>; revisit when signal X strengthens`），让下一轮有连续性。
+4. 用户同意时，尽量在同一轮完成拆分，运行相关 formatter/linter/tests，并在交接中报告新边界。
+
+### 跨语言共享规则
+
+- 仓库自身约定优先于通用风格指导；命名、文件布局、导入顺序、模块边界照既有写法走。
+- 验证顺序：formatter → linter → typecheck → tests；保持能通过的最小 diff。
+- 不凭空发明抽象、helper 或架构，除非仓库需要；保留公共 API 和行为，除非任务本身要求破坏性变更。
+- 每个行为变更配套更新测试；错误、边界与校验是标准的一部分，不是事后补丁。
+- 收尾前完成验证并报告实际跑过的命令；跳过的验证要说明原因，不得宣称未验证的成功。
+
+### TypeScript 补充（来自 TS 深 cookbook）
+
+- 命名表达领域含义，不重复编码类型信息；类型 PascalCase，值/函数 camelCase。
+- 边界 API 用显式导出类型；`any`、类型断言、非空断言保持稀有且有理由；不用 `as any` 让编译器闭嘴。
+- 运行时不可信输入在边界处校验（如 `canvas-bff` 用 zod），不盲信类型系统。
+
+## Stack Snapshot & Verified Commands
+
+- 详见 `.zcode/memory/project/tech-stack.md`（自动注入）。三 npm 子包：`web/`（Vite+React19+antd6+Tailwind4+Zustand）、`canvas-bff/`（NestJS+pg）、`canvas-agent/`（MCP+codex CLI）；全部 ESM；docs 站点独立、按需安装。
+- 已验证：`canvas-agent` npm install + `npm test`（124 pass）；`canvas-bff` `npm test`（56 pass）；`web` `npm run lint` 通过；web 测试用 `bun test`（bun 1.4.2 已装）。
+
+## Source Notes
+
+- Wiki 读取路径：`queries/coding-standards-cross-language-cookbook.md` → `queries/coding-standards-programming-languages-cookbook.md` → `queries/coding-standards-programming-languages-typescript-cookbook.md`（vault 同上；后续可经 obsidian skill 打开同路径获取更深内容）。
+- 参考 pack（agent-skills-standard 快照，commit `9f695e8e2c3e423dfcd420a0e6b80e0e99044088`，snapshot 2026-08-01，Apache-2.0）：`typescript/typescript-language`、`typescript/typescript-best-practices`、`typescript/typescript-tooling`、`react/react-hooks`、`react/react-component-patterns`、`react/react-state-management`、`common/common-best-practices`、`common/common-code-review`、`common/common-api-design`。仅为参考，仓库规则与 wiki 规则优先。
