@@ -426,6 +426,55 @@ test("Sub2API video adapter sends a canonical intent without model-specific rout
   assert.equal(requests[2].headers.has("authorization"), false);
 });
 
+test("Sub2API video adapter forwards reference images in the gateway contract", async () => {
+  const { providers, provider } = fixture(undefined, "sub2api-video-key-refs");
+  let request: Request | undefined;
+  const adapter = new HttpGenerationProvider({
+    baseUrl: "https://sub2api.example.test",
+    providers,
+    secretBox,
+    fetchImpl: async (input, init) => {
+      request = new Request(input, init);
+      if (request.url.endsWith("/v1/videos/generations"))
+        return new Response(JSON.stringify({ request_id: "grok-task-refs" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      return new Response(
+        JSON.stringify({ status: "running", progress: 10 }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    },
+  });
+
+  await adapter.start({
+    id: "generation-video-refs",
+    accountId: "account-a",
+    projectId: "project-1",
+    providerId: provider.id,
+    kind: "video",
+    input: {
+      prompt: "animate the character",
+      model: "grok-imagine-video-1.5",
+      referenceImages: ["data:image/png;base64,ref-a"],
+    },
+    inputHash: "hash-video-refs",
+    clientRequestId: "request-video-refs",
+    status: "running",
+    progress: 0,
+    attempt: 0,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+
+  const body = (await request?.json()) as {
+    reference_images?: Array<{ image_url?: string; url?: string }>;
+  };
+  assert.deepEqual(body.reference_images, [
+    { image_url: "data:image/png;base64,ref-a" },
+  ]);
+});
+
 test("video adapter accepts nested request IDs returned by Sub2API", async () => {
   const { providers, provider } = fixture(undefined, "sub2api-video-key-nested");
   const requests: Request[] = [];

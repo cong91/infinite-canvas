@@ -19,6 +19,10 @@ export function buildGenerationIntent(
   for (const [key, value] of Object.entries(input)) {
     if (key === "model" || key === "prompt" || value === undefined || value === null)
       continue;
+    if (key === "referenceImages") {
+      parameters.reference_images = imageReferencePayload(value);
+      continue;
+    }
     parameters[canonicalParameterName(key)] = value;
   }
 
@@ -80,8 +84,15 @@ function normalizeVideoParameters(
 
 function canonicalParameterName(key: string) {
   if (key === "aspectRatio") return "aspect_ratio";
-  if (key === "referenceImages") return "reference_images";
   return key;
+}
+
+/** Gateway contract: image references travel as {image_url} objects (data or https URLs). */
+function imageReferencePayload(value: unknown) {
+  if (!Array.isArray(value)) return value;
+  return value
+    .filter((item): item is string => typeof item === "string" && item.trim() !== "")
+    .map((url) => ({ image_url: url }));
 }
 
 function defaultModel(kind: GenerationRecord["kind"]) {
