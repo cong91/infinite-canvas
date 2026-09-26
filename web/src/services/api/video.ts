@@ -10,7 +10,7 @@ import { boolConfig, buildApiUrl, modelOptionName, resolveModelRequestConfig, re
 import { runModelPlugin } from "./model-plugin";
 import type { ReferenceImage } from "@/types/image";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
-import { isCanvasAccountAuthenticated, requestCanvasVideo, submitCanvasGeneration, waitForCanvasGeneration, readCanvasGenerationBlob } from "./canvas-generation";
+import { isCanvasAccountAuthenticated, submitCanvasGeneration, waitForCanvasGeneration, readCanvasGenerationBlob } from "./canvas-generation";
 
 type VideoResponse = { id: string; status?: string; error?: { message?: string }; url?: string; result_url?: string; video_url?: string; content?: { video_url?: string; url?: string } | null };
 type ApiVideoResponse = VideoResponse | { code?: number | string; data?: VideoResponse | null; msg?: string; message?: string; error?: { message?: string } };
@@ -45,7 +45,6 @@ function aiHeaders(config: AiConfig, contentType?: string) {
 }
 
 export async function requestVideoGeneration(config: AiConfig, prompt: string, references: ReferenceImage[] = [], options?: VideoMediaOptions): Promise<VideoGenerationResult> {
-    if (isCanvasAccountAuthenticated()) return { blob: await requestCanvasVideo(config, prompt, options) };
     return waitForVideoGenerationTask(config, await createVideoGenerationTask(config, prompt, references, options), options);
 }
 
@@ -73,7 +72,8 @@ function videoTaskFailed(message: string) {
 
 export async function createVideoGenerationTask(config: AiConfig, prompt: string, references: ReferenceImage[] = [], options?: VideoMediaOptions): Promise<VideoGenerationTask> {
     if (isCanvasAccountAuthenticated()) {
-        const generation = await submitCanvasGeneration("video", config, prompt, { seconds: config.videoSeconds, size: config.size, quality: config.vquality, generateAudio: config.videoGenerateAudio, watermark: config.videoWatermark }, options);
+        const referenceImages = await Promise.all(references.map((image) => imageToDataUrl(image)));
+        const generation = await submitCanvasGeneration("video", config, prompt, { seconds: config.videoSeconds, size: config.size, quality: config.vquality, generateAudio: config.videoGenerateAudio, watermark: config.videoWatermark, referenceImages }, options);
         return { id: generation.id, provider: "canvas", model: config.model || config.videoModel };
     }
     const selectedModel = (config.model || config.videoModel).trim();

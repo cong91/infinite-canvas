@@ -9,7 +9,7 @@ import { buildImageReferencePromptText } from "@/lib/image-reference-prompt";
 import { imageToDataUrl } from "@/services/image-storage";
 import { imageSizePresets, inferMediaScale } from "@/lib/media-size";
 import type { ReferenceImage } from "@/types/image";
-import { isCanvasAccountAuthenticated, requestCanvasImage } from "./canvas-generation";
+import { isCanvasAccountAuthenticated, requestCanvasImage, requestCanvasImageEdit } from "./canvas-generation";
 
 const apiText = (key: string, options?: Record<string, unknown>) => i18n.t(`apiErrors.${key}`, options);
 
@@ -758,7 +758,7 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
 }
 
 export async function requestEdit(config: AiConfig, prompt: string, references: ReferenceImage[], options?: RequestOptions) {
-    if (isCanvasAccountAuthenticated()) return [await requestCanvasImage(config, buildImageReferencePromptText(prompt, references), options)];
+    if (isCanvasAccountAuthenticated()) return [await requestCanvasImageEdit(config, prompt, references, options)];
     const requestConfig = resolveModelRequestConfig(config, config.model || config.imageModel);
     const n = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
     const requestPrompt = buildImageReferencePromptText(prompt, references);

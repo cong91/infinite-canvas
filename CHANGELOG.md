@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- [修复] 生成请求携带参考图：Canvas 账号路径下图片编辑与视频生成现在把参考图（base64）随生成请求发送到 BFF，BFF 图片有参考图时改走 `/v1/images/edits` 并透传 `images[]`、视频透传 `reference_images` 到 Sub2API 网关；不再把参考图静默丢弃导致生成结果与参考图完全无关。同步把 Nginx `/api/` 与 BFF 的请求体上限从 1MB 提升到 20MB 以容纳 base64 参考图。
+
 - [新增] Lịch sử tạo ảnh ghi bản ghi ngay khi bấm Tạo với trạng thái "Đang tạo" (tag xoay, không hiện duration) và tự cập nhật thành công/thất bại khi batch kết thúc; tải lại trang giữa chừng với generation Canvas sẽ tự poll tiếp task trên server để hoàn thiện kết quả thật, lượt tạo trực tiếp không khôi phục được được đánh dấu "đã gián đoạn" thay vì mất dấu vết.
 
 - [修复] Canvas BFF generation worker 限制重试次数与退避：可重试失败（如上游 503）最多尝试 5 次后以 `MAX_RETRY_EXCEEDED` 永久失败，重试按 30s→60s→120s→240s→480s 指数退避，避免单个故障 provider 的任务无限重试并阻塞后续所有生成任务（OVH 上曾因该问题卡死队列数小时）。

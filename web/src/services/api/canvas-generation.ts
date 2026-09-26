@@ -1,10 +1,12 @@
 import { nanoid } from "nanoid";
 
 import i18n from "@/i18n";
+import { imageToDataUrl } from "@/services/image-storage";
 import { useCanvasAccountStore } from "@/stores/use-canvas-account-store";
 import { useCanvasProviderStore } from "@/stores/use-canvas-provider-store";
 import { modelOptionName, type AiConfig } from "@/stores/use-config-store";
 import { canvasBff, decodeCanvasModel, type CanvasGeneration } from "./canvas-bff";
+import type { ReferenceImage } from "@/types/image";
 
 export type CanvasGenerationInput = {
     projectId: string;
@@ -73,17 +75,18 @@ export async function requestCanvasImage(config: AiConfig, prompt: string, optio
     return awaitCanvasImage(generation.id, options);
 }
 
+export async function requestCanvasImageEdit(config: AiConfig, prompt: string, references: ReferenceImage[], options?: { signal?: AbortSignal; onCanvasTask?: (generationId: string) => void }) {
+    const referenceImages = await Promise.all(references.map((image) => imageToDataUrl(image)));
+    const generation = await submitCanvasGeneration("image", config, prompt, { count: config.count, size: config.size, quality: config.quality, referenceImages }, options);
+    options?.onCanvasTask?.(generation.id);
+    return awaitCanvasImage(generation.id, options);
+}
+
 /** Poll a submitted canvas image generation until it settles and download the result as a data URL. */
 export async function awaitCanvasImage(generationId: string, options?: { signal?: AbortSignal }) {
     const completed = await waitForCanvasGeneration(generationId, options);
     const blob = await readCanvasGenerationBlob(completed, options);
     return { id: nanoid(), dataUrl: await blobToDataUrl(blob) };
-}
-
-export async function requestCanvasVideo(config: AiConfig, prompt: string, options?: { signal?: AbortSignal }) {
-    const generation = await submitCanvasGeneration("video", config, prompt, { seconds: config.videoSeconds, size: config.size, quality: config.vquality, generateAudio: config.videoGenerateAudio, watermark: config.videoWatermark }, options);
-    const completed = await waitForCanvasGeneration(generation.id, options);
-    return readCanvasGenerationBlob(completed, options);
 }
 
 export async function requestCanvasAudio(config: AiConfig, prompt: string, options?: { signal?: AbortSignal }) {

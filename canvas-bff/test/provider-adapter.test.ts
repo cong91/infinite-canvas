@@ -71,6 +71,55 @@ test("image adapter decrypts the provider secret and ingests base64 output", asy
   assert.equal((await request?.json()).prompt, "a tree");
 });
 
+test("image adapter forwards reference images to the edits endpoint", async () => {
+  const { providers, provider } = fixture();
+  let request: Request | undefined;
+  const adapter = new HttpGenerationProvider({
+    baseUrl: "https://sub2api.example.test",
+    providers,
+    secretBox,
+    fetchImpl: async (input, init) => {
+      request = new Request(input, init);
+      return new Response(
+        JSON.stringify({
+          data: [{ b64_json: Buffer.from("edited-bytes").toString("base64") }],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    },
+  });
+
+  const result = await adapter.start({
+    id: "generation-edit",
+    accountId: "account-a",
+    projectId: "project-1",
+    providerId: provider.id,
+    kind: "image",
+    input: {
+      prompt: "make it red",
+      model: "gpt-image-2",
+      referenceImages: ["data:image/png;base64,ref-1", "data:image/png;base64,ref-2"],
+    },
+    inputHash: "hash-edit",
+    clientRequestId: "request-edit",
+    status: "running",
+    progress: 0,
+    attempt: 0,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+
+  assert.equal(result.status, "succeeded");
+  assert.equal(request?.url, "https://sub2api.example.test/v1/images/edits");
+  const body = (await request?.json()) as {
+    images: Array<{ image_url: string }>;
+  };
+  assert.deepEqual(body.images, [
+    { image_url: "data:image/png;base64,ref-1" },
+    { image_url: "data:image/png;base64,ref-2" },
+  ]);
+});
+
 test("image adapter uses the provider-specific endpoint for third-party providers", async () => {
   const { providers, provider } = fixture("https://third-party.example.test");
   let requestUrl = "";

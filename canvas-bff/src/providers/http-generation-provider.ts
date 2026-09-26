@@ -133,16 +133,25 @@ export class HttpGenerationProvider implements GenerationProvider {
     generation: GenerationRecord,
     allowExternalOutputUrl: boolean,
   ): Promise<ProviderResult> {
-    const response = await this.request(baseUrl, "/v1/images/generations", secret, {
-      method: "POST",
-      body: {
-        model: inputString(generation, "model") || "gpt-image-1",
-        prompt: inputString(generation, "prompt"),
-        n: inputNumber(generation, "count") ?? 1,
-        size: inputString(generation, "size") || undefined,
-        response_format: "b64_json",
+    const references = imageReferences(generation);
+    const response = await this.request(
+      baseUrl,
+      references.length ? "/v1/images/edits" : "/v1/images/generations",
+      secret,
+      {
+        method: "POST",
+        body: {
+          model: inputString(generation, "model") || "gpt-image-1",
+          prompt: inputString(generation, "prompt"),
+          n: inputNumber(generation, "count") ?? 1,
+          size: inputString(generation, "size") || undefined,
+          response_format: "b64_json",
+          ...(references.length
+            ? { images: references.map((url) => ({ image_url: url })) }
+            : {}),
+        },
       },
-    });
+    );
     if (!response.ok) return httpFailure(response);
     const payload = await jsonBody(response);
     const first = arrayValue(payload.data)[0];
@@ -492,6 +501,14 @@ function inputString(generation: GenerationRecord, key: string): string {
     : value === undefined || value === null
       ? ""
       : String(value);
+}
+function imageReferences(generation: GenerationRecord): string[] {
+  const value = generation.input.referenceImages;
+  return Array.isArray(value)
+    ? value.filter(
+        (item): item is string => typeof item === "string" && item.trim() !== "",
+      )
+    : [];
 }
 function inputNumber(
   generation: GenerationRecord,
