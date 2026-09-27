@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- [新增] Canvas 视频时长校验门槛：BFF 按 model 能力校验视频 `seconds`（当前已知 xAI `grok-imagine-video*` 上限 15 秒，经生产环境重放验证），超限请求在提交时即返回 `VIDEO_DURATION_NOT_SUPPORTED` 与具体说明，不静默压低用户时长、也不等到 worker 阶段才以笼统的 `UPSTREAM_HTTP_400` 失败；新增 `GET /api/v1/generations/video-limits` 供前端读取限制，视频设置面板据此约束时长滑杆并在当前值超限时显示行内警告（不自动改动用户已选值），提交失败提示本地化。另修复 smart 模式（seconds ≤ 0）会把 `duration: -1` 透传给上游的问题，现在视为"由 provider 决定"而不发送该字段。
 - [修复] Canvas 上传图片云端备份与恢复：新增 BFF 二进制上传接口 `POST /api/v1/assets/upload`（raw body，按 sha256 checksum 去重，生成结果重复上传不产生第二份存储）；Canvas 账号登录时上传/粘贴/拖拽的图片在写入本地缓存的同时同步一份到云端媒体存储并在节点 metadata 记录 `assetId`，换设备打开项目可恢复。修复上线前只存在本地的旧上传图片，在原设备打开项目时会自动补传云端并回填引用。
 - [新增] Canvas 支持从网页/其他浏览器窗口拖拽图片 URL 到画布：松手即下载该图片并创建图片节点，与本地文件拖拽一致（同样落云端缓存）。
 - [修复] Canvas 生成图片跨设备可恢复：Canvas 账号生成成功后节点/工作台记录现在保存 BFF 云端 asset 引用（`assetId`，图片本体已存入 MinIO 媒体存储）；再次打开画布或换设备时若本地缓存缺失，自动通过 BFF 签名 URL 从云端媒体存储拉回并重建本地缓存，不再显示死链 `blob:` 空图。图片工作台的下载/加入参考/保存资产同样支持云端回源。修复上线前生成的旧节点没有 `assetId` 引用时，按图片精确字节数在账号云端资产中回查匹配并恢复，旧项目图片在新设备上可自动找回。

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-import { CanvasBffError, canvasBff, type CanvasProvider, type ProviderCatalog } from "@/services/api/canvas-bff";
+import { CanvasBffError, canvasBff, type CanvasProvider, type ProviderCatalog, type VideoDurationLimitRule } from "@/services/api/canvas-bff";
 
 type ProviderInput = { name: string; providerType?: string; baseUrl?: string; model?: string; group?: string; channel?: string; catalogKeyId?: string; secret?: string };
 type ProviderPatch = { name?: string; model?: string; group?: string; channel?: string; status?: "active" | "disabled" };
@@ -11,6 +11,8 @@ type CanvasProviderStore = {
     catalog: ProviderCatalog | null;
     providersLoaded: boolean;
     catalogLoaded: boolean;
+    videoDurationLimits: VideoDurationLimitRule[];
+    videoLimitsLoaded: boolean;
     status: "idle" | "loading" | "ready" | "error";
     error: string | null;
     modelsByProvider: Record<string, string[]>;
@@ -19,6 +21,7 @@ type CanvasProviderStore = {
     studioModels: Partial<Record<StudioCapability, string>>;
     load: (force?: boolean) => Promise<void>;
     loadCatalog: (force?: boolean) => Promise<void>;
+    loadVideoLimits: (force?: boolean) => Promise<void>;
     loadModels: (providerId: string, force?: boolean) => Promise<string[]>;
     create: (input: ProviderInput) => Promise<CanvasProvider>;
     createWithNewKey: (input: { name: string; groupId: string }) => Promise<CanvasProvider>;
@@ -30,6 +33,7 @@ type CanvasProviderStore = {
 
 let providersRequest: Promise<void> | null = null;
 let catalogRequest: Promise<void> | null = null;
+let videoLimitsRequest: Promise<void> | null = null;
 const modelsRequests = new Map<string, Promise<string[]>>();
 let requestGeneration = 0;
 
@@ -38,6 +42,8 @@ export const useCanvasProviderStore = create<CanvasProviderStore>()((set, get) =
     catalog: null,
     providersLoaded: false,
     catalogLoaded: false,
+    videoDurationLimits: [],
+    videoLimitsLoaded: false,
     status: "idle",
     error: null,
     modelsByProvider: {},
@@ -92,6 +98,23 @@ export const useCanvasProviderStore = create<CanvasProviderStore>()((set, get) =
             });
         catalogRequest = request;
         return catalogRequest;
+    },
+    loadVideoLimits: async (force = false) => {
+        if (!force && get().videoLimitsLoaded) return;
+        if (videoLimitsRequest) return videoLimitsRequest;
+        const request = canvasBff
+            .getVideoLimits()
+            .then(({ limits }) => {
+                set({ videoDurationLimits: limits, videoLimitsLoaded: true });
+            })
+            .catch(() => {
+                // Limits are advisory in the UI; the BFF gate is authoritative.
+            })
+            .finally(() => {
+                if (videoLimitsRequest === request) videoLimitsRequest = null;
+            });
+        videoLimitsRequest = request;
+        return request;
     },
     loadModels: async (providerId, force = false) => {
         const cached = get().modelsByProvider[providerId];
@@ -148,7 +171,8 @@ export const useCanvasProviderStore = create<CanvasProviderStore>()((set, get) =
         requestGeneration += 1;
         providersRequest = null;
         catalogRequest = null;
+        videoLimitsRequest = null;
         modelsRequests.clear();
-        set({ providers: [], catalog: null, providersLoaded: false, catalogLoaded: false, modelsByProvider: {}, modelsLoadingProviderId: null, modelsLoadingProviderIds: [], studioModels: {}, status: "idle", error: null });
+        set({ providers: [], catalog: null, providersLoaded: false, catalogLoaded: false, videoDurationLimits: [], videoLimitsLoaded: false, modelsByProvider: {}, modelsLoadingProviderId: null, modelsLoadingProviderIds: [], studioModels: {}, status: "idle", error: null });
     },
 }));

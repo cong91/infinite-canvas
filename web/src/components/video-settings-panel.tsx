@@ -1,12 +1,15 @@
-import { type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { Slider } from "antd";
 import { useTranslation } from "react-i18next";
 
 import i18n from "@/i18n";
 import { ImageSettingsTheme } from "@/components/image-settings-panel";
 import { type CanvasTheme } from "@/lib/canvas-theme";
+import { videoDurationLimit } from "@/lib/canvas/video-capabilities";
 import { clampVideoSeconds, computeVideoSize, inferVideoRatio, parseVideoResolution, readVideoDimensions, VIDEO_SECONDS_MAX, VIDEO_SECONDS_MIN, videoRatioOptions } from "@/lib/media-size";
-import { type AiConfig } from "@/stores/use-config-store";
+import { useCanvasProviderStore } from "@/stores/use-canvas-provider-store";
+import { modelOptionName, type AiConfig } from "@/stores/use-config-store";
+import { decodeCanvasModel } from "@/services/api/canvas-bff";
 
 const resolutionOptions = [
     { value: "480", label: "480p" },
@@ -37,7 +40,15 @@ type VideoSettingsPanelProps = {
 
 export function VideoSettingsPanel({ config, onConfigChange, theme, showTitle = true, className = "w-[320px] space-y-4 rounded-2xl px-1 py-0.5" }: VideoSettingsPanelProps) {
     const { t } = useTranslation();
+    const videoLimits = useCanvasProviderStore((state) => state.videoDurationLimits);
+    useEffect(() => {
+        void useCanvasProviderStore.getState().loadVideoLimits();
+    }, []);
     const seconds = Number(clampVideoSeconds(config.videoSeconds || "6"));
+    const selectedValue = config.videoModel || config.model || "";
+    const secondsLimit = videoDurationLimit(decodeCanvasModel(selectedValue)?.model || decodeCanvasModel(config.model || "")?.model || modelOptionName(selectedValue), videoLimits);
+    const secondsMax = secondsLimit ?? VIDEO_SECONDS_MAX;
+    const durationExceeded = secondsLimit !== undefined && seconds > secondsLimit;
     const videoMode = normalizeVideoModeValue(config.videoMode);
     const resolution = parseVideoResolution(config.vquality);
     const selectedRatio = inferVideoRatio(config.size || "auto");
@@ -91,12 +102,17 @@ export function VideoSettingsPanel({ config, onConfigChange, theme, showTitle = 
                 </SettingGroup>
                 <SettingGroup title={t("settingsPanels.video.seconds")} color={theme.node.muted}>
                     <div className="flex items-center gap-3" onMouseDown={(event) => event.stopPropagation()}>
-                        <Slider className="min-w-0 flex-1" min={VIDEO_SECONDS_MIN} max={VIDEO_SECONDS_MAX} step={1} value={seconds} onChange={(value) => onConfigChange("videoSeconds", String(Array.isArray(value) ? value[0] : value))} />
+                        <Slider className="min-w-0 flex-1" min={VIDEO_SECONDS_MIN} max={secondsMax} step={1} value={seconds} onChange={(value) => onConfigChange("videoSeconds", String(Array.isArray(value) ? value[0] : value))} />
                         <SecondsInput value={seconds} theme={theme} onCommit={(value) => onConfigChange("videoSeconds", String(value))} />
                         <span className="shrink-0 text-sm" style={{ color: theme.node.muted }}>
                             s
                         </span>
                     </div>
+                    {durationExceeded ? (
+                        <div className="text-xs" style={{ color: "#f87171" }}>
+                            {t("settingsPanels.video.durationExceedsModelLimit", { limit: secondsLimit })}
+                        </div>
+                    ) : null}
                 </SettingGroup>
                 <SettingGroup title={t("settingsPanels.video.mode")} color={theme.node.muted}>
                     <div className="grid grid-cols-2 gap-2.5">

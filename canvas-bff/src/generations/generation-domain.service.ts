@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import type { ProjectRepository } from "../projects/repository.js";
 import type { ProviderRepository } from "../providers/repository.js";
+import { videoDurationLimit } from "../providers/model-capabilities.js";
 import { HttpError } from "../http/errors.js";
 import { type GenerationKind, type GenerationRecord, type GenerationRepository } from "./repository.js";
 
@@ -38,6 +39,7 @@ export class GenerationService {
         const provider = await this.providers.get(accountId, input.providerId);
         if (!provider || provider.status !== "active") throw new HttpError(404, "PROVIDER_NOT_FOUND", "Provider was not found");
         if (!input.clientRequestId.trim()) throw new HttpError(400, "INVALID_REQUEST", "clientRequestId is required");
+        if (input.kind === "video") assertVideoDurationSupported(input.input);
         const inputHash = hashInput(input);
         const existing = await this.generations.findByClientRequest(accountId, input.clientRequestId);
         if (existing) {
@@ -58,6 +60,15 @@ export class GenerationService {
     async cancel(accountId: string, id: string): Promise<boolean> {
         return this.generations.cancel(accountId, id);
     }
+}
+
+/** Reject durations a model cannot serve instead of failing later with a generic upstream 400. */
+function assertVideoDurationSupported(videoInput: Record<string, unknown>): void {
+    const limit = videoDurationLimit(typeof videoInput.model === "string" ? videoInput.model : undefined);
+    if (!limit) return;
+    const seconds = Number(videoInput.seconds);
+    if (!Number.isFinite(seconds) || seconds <= 0 || seconds <= limit) return;
+    throw new HttpError(400, "VIDEO_DURATION_NOT_SUPPORTED", `Model ${videoInput.model} supports video up to ${limit} seconds, but ${seconds}s was requested`);
 }
 
 function hashInput(input: CreateGenerationInput): string {

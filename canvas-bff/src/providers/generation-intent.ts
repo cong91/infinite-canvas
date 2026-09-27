@@ -70,8 +70,9 @@ function normalizeVideoParameters(
   ])
     delete parameters[key];
 
+  // Non-positive seconds (e.g. "-1" smart mode) means "let the provider decide".
   const duration = numberValue(input.duration ?? input.seconds);
-  if (duration !== undefined) parameters.duration = Math.floor(duration);
+  if (duration !== undefined && duration > 0) parameters.duration = Math.floor(duration);
 
   const resolution = normalizeResolution(
     stringValue(input.resolution ?? input.quality ?? input.vquality) ||

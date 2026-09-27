@@ -9,3 +9,4 @@ description: 当前项目后续值得处理的事项
 
 - 本地 Agent 接入后续：按[本地 Agent 接入规划](/zh-CN/docs/progress/local-agent-integration-plan)把 Claude Code CLI Adapter 升级为 Claude Agent SDK Adapter，并完善工具队列体验。
 - Agent Skill 后续：补充网络检索安装、Skill 资源文件管理和可控的本地记忆沉淀。
+- 随新视频模型上线持续补充 Canvas 按 model 的生成能力目录（`canvas-bff/src/providers/model-capabilities.ts`）：按模型族补 duration/分辨率规则，避免再靠上游 400 才发现限制；可考虑把分辨率/宽高比上限也纳入 `GET /api/v1/generations/video-limits` 返回。

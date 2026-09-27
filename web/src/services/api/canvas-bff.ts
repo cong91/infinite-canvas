@@ -65,6 +65,12 @@ export type ProviderCatalog = {
     channels: ProviderCatalogItem[];
 };
 
+export type VideoDurationLimitRule = {
+    /** Model names starting with this prefix (case-insensitive) match the rule. */
+    pattern: string;
+    maxDurationSeconds: number;
+};
+
 export type CanvasProject = {
     id: string;
     name: string;
@@ -140,6 +146,7 @@ export const canvasBff = {
     getAsset: (assetId: string) => request<CanvasAsset>(`/v1/assets/${encodeURIComponent(assetId)}`),
     uploadAsset: (blob: Blob, kind: CanvasAsset["kind"] = "image") => uploadRequest<CanvasAsset>(`/v1/assets/upload?kind=${kind}`, blob),
     listGenerations: () => request<CanvasGeneration[]>("/v1/generations"),
+    getVideoLimits: () => request<{ limits: VideoDurationLimitRule[] }>("/v1/generations/video-limits"),
     getGeneration: (generationId: string) => request<CanvasGeneration>(`/v1/generations/${encodeURIComponent(generationId)}`),
     createGeneration: (input: { projectId: string; providerId: string; kind: CanvasGeneration["kind"]; input?: Record<string, unknown>; clientRequestId: string }) => request<CanvasGeneration>("/v1/generations", { method: "POST", body: input }),
     cancelGeneration: (generationId: string) => request<CanvasGeneration>(`/v1/generations/${encodeURIComponent(generationId)}/cancel`, { method: "POST" }),

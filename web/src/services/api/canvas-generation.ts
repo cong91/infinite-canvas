@@ -5,7 +5,7 @@ import { imageToDataUrl } from "@/services/image-storage";
 import { useCanvasAccountStore } from "@/stores/use-canvas-account-store";
 import { useCanvasProviderStore } from "@/stores/use-canvas-provider-store";
 import { modelOptionName, type AiConfig } from "@/stores/use-config-store";
-import { canvasBff, decodeCanvasModel, type CanvasGeneration } from "./canvas-bff";
+import { CanvasBffError, canvasBff, decodeCanvasModel, type CanvasGeneration } from "./canvas-bff";
 import type { ReferenceImage } from "@/types/image";
 
 export type CanvasGenerationInput = {
@@ -35,13 +35,20 @@ export async function submitCanvasGeneration(kind: CanvasGeneration["kind"], con
     const provider = selectedProviderId ? providers.find((item) => item.status === "active" && item.id === selectedProviderId) : undefined;
     if (!explicitModel || !provider) throw new Error("Select an active Canvas provider and model before generating");
     const project = projects[0] || (await canvasBff.createProject({ name: "Canvas Workbench", data: { source: "workbench" } }));
-    return canvasBff.createGeneration({
-        projectId: project.id,
-        providerId: provider.id,
-        kind,
-        input: { model: explicitModel?.model || configuredModel, prompt, ...extra },
-        clientRequestId: `canvas-${kind}-${nanoid()}`,
-    });
+    try {
+        return await canvasBff.createGeneration({
+            projectId: project.id,
+            providerId: provider.id,
+            kind,
+            input: { model: explicitModel?.model || configuredModel, prompt, ...extra },
+            clientRequestId: `canvas-${kind}-${nanoid()}`,
+        });
+    } catch (error) {
+        if (error instanceof CanvasBffError && error.code === "VIDEO_DURATION_NOT_SUPPORTED") {
+            throw new Error(i18n.t("apiErrors.videoDurationNotSupported", { detail: error.message }));
+        }
+        throw error;
+    }
 }
 
 export async function waitForCanvasGeneration(generationId: string, options?: { signal?: AbortSignal }): Promise<CanvasGeneration> {

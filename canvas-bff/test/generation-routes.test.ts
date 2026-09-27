@@ -45,3 +45,37 @@ test("generation routes create idempotent records and enforce session ownership"
         await app.close();
     }
 });
+
+test("video generation submits are gated by model duration capability", async () => {
+    const sessions = new SessionService(new InMemorySessionRepository());
+    const projects = new InMemoryProjectRepository();
+    const providers = new InMemoryProviderRepository();
+    const account = await sessions.upsertAccount({ sub2ApiUserId: "user-a", displayName: "User A", status: "active" });
+    const project = projects.create({ accountId: account.id, name: "Demo", data: {} });
+    const provider = providers.create({ accountId: account.id, name: "Provider", providerType: "openai-compatible", secret: new ProviderSecretBox(Buffer.alloc(32, 1)).encrypt("secret"), secretDescription: { fingerprint: "fingerprint", masked: "****cret" }, status: "active" });
+    const app = await startTestApp(config, {
+        auth: { sub2ApiClient: new Sub2ApiClient(config.sub2ApiBaseUrl, async () => new Response(JSON.stringify({ data: { id: "user-a", username: "User A", status: "active" } }))), sessionService: sessions },
+        workspace: { projects: { projects }, providers: { catalog: createDefaultProviderOptions(sessions, config.sub2ApiBaseUrl).catalog, secretBox: new ProviderSecretBox(Buffer.alloc(32, 1)), providers }, assets: createDefaultAssetOptions(sessions, projects) },
+    });
+    const url = app.url;
+    const session = await sessions.createSession(account);
+    const cookie = `canvas_session=${session.token}`;
+    const submit = (input: Record<string, unknown>, clientRequestId: string) =>
+        fetch(`${url}/api/v1/generations`, { method: "POST", headers: { Origin: config.canvasOrigin, Cookie: cookie, "Content-Type": "application/json" }, body: JSON.stringify({ projectId: project.id, providerId: provider.id, kind: "video", input, clientRequestId }) });
+    try {
+        const limits = await fetch(`${url}/api/v1/generations/video-limits`, { headers: { Origin: config.canvasOrigin, Cookie: cookie } });
+        assert.equal(limits.status, 200);
+        assert.ok((await limits.json()).data.limits.some((rule: { pattern: string }) => rule.pattern === "grok-imagine-video"));
+        const rejected = await submit({ model: "grok-imagine-video-1.5", prompt: "ad", seconds: "30" }, "request-video-1");
+        assert.equal(rejected.status, 400);
+        assert.equal((await rejected.json()).code, "VIDEO_DURATION_NOT_SUPPORTED");
+        const capped = await submit({ model: "grok-imagine-video-1.5", prompt: "ad", seconds: "15" }, "request-video-2");
+        assert.equal(capped.status, 201);
+        const smart = await submit({ model: "grok-imagine-video-1.5", prompt: "ad", seconds: "-1" }, "request-video-3");
+        assert.equal(smart.status, 201);
+        const otherModel = await submit({ model: "sora-2", prompt: "ad", seconds: "30" }, "request-video-4");
+        assert.equal(otherModel.status, 201);
+    } finally {
+        await app.close();
+    }
+});
