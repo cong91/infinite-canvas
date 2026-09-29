@@ -76,6 +76,12 @@ export async function readCanvasGenerationBlob(generation: CanvasGeneration, opt
     return response.blob();
 }
 
+/** 产物 blob + 云端 assetId；assetId 让节点把结果关联回 BFF 存储的对象，供换设备恢复。 */
+export async function readCanvasGenerationMedia(generation: CanvasGeneration, options?: { signal?: AbortSignal }) {
+    const blob = await readCanvasGenerationBlob(generation, options);
+    return { blob, assetId: generation.outputAssetId || generation.asset?.id };
+}
+
 export async function requestCanvasImage(config: AiConfig, prompt: string, options?: { signal?: AbortSignal; onCanvasTask?: (generationId: string) => void }) {
     const generation = await submitCanvasGeneration("image", config, prompt, { count: config.count, size: config.size, quality: config.quality }, options);
     options?.onCanvasTask?.(generation.id);
@@ -99,7 +105,7 @@ export async function awaitCanvasImage(generationId: string, options?: { signal?
 export async function requestCanvasAudio(config: AiConfig, prompt: string, options?: { signal?: AbortSignal }) {
     const generation = await submitCanvasGeneration("audio", config, prompt, { voice: config.audioVoice, format: config.audioFormat, speed: config.audioSpeed, instructions: config.audioInstructions }, options);
     const completed = await waitForCanvasGeneration(generation.id, options);
-    return readCanvasGenerationBlob(completed, options);
+    return readCanvasGenerationMedia(completed, options);
 }
 
 export async function requestCanvasText(config: AiConfig, prompt: string, options?: { signal?: AbortSignal }) {

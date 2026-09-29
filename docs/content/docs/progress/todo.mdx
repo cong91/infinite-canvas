@@ -5,7 +5,6 @@ description: Planned follow-up work
 
 # TODO
 
-- Canvas video/audio node cloud restore: thread the generation `outputAssetId` into video/audio node metadata (same pattern as image `assetId`) and rehydrate `media_files` blobs from BFF signed URLs on load, so canvas-generated videos and audios also survive device switches.
 - Replace the Claude Code CLI adapter with a Claude Agent SDK adapter and improve the tool queue, following the [Local Agent Integration Plan](/docs/progress/local-agent-integration-plan).
 - Add Skill installation from web search, Skill resource-file management, and controlled local-memory persistence.
 - Extend the Canvas per-model generation capability catalog (`canvas-bff/src/providers/model-capabilities.ts`) as new video models ship — add duration/resolution rules per model family instead of discovering limits through upstream 400s; consider exposing resolution/aspect-ratio caps through the same `GET /api/v1/generations/video-limits` response.

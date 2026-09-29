@@ -1,7 +1,7 @@
 import { defaultConfig, resolveModelForCapability, type AiConfig } from "@/stores/use-config-store";
 import i18n from "@/i18n";
 import { ensureImagePreview, getImageBlob, resolveImageUrl, setImageBlob, uploadImage } from "@/services/image-storage";
-import { resolveMediaUrl } from "@/services/file-storage";
+import { getMediaBlob, resolveMediaUrl, setMediaBlob } from "@/services/file-storage";
 import { canvasBff, type CanvasAsset } from "@/services/api/canvas-bff";
 import { isCanvasAccountAuthenticated } from "@/services/api/canvas-generation";
 import { imageMetadata, referenceUrl } from "@/lib/canvas/canvas-node-factory";
@@ -46,17 +46,19 @@ export async function resolveMetadataReferences(metadata: CanvasNodeMetadata) {
 
 // assetId 缺失的旧节点（修复上线前生成）按文件字节数在云端资产里回查：客户端缓存的是
 // BFF 存储对象的原始字节，blob.size 与 asset.metadata.size 完全相等，可作精确匹配键。
-let assetSizeIndexPromise: Promise<Map<number, CanvasAsset>> | undefined;
+const assetSizeIndexPromises = new Map<CanvasAsset["kind"], Promise<Map<number, CanvasAsset>>>();
 
-function assetBySizeIndex() {
-    assetSizeIndexPromise ??= canvasBff
+function assetBySizeIndex(kind: CanvasAsset["kind"]) {
+    let promise = assetSizeIndexPromises.get(kind);
+    promise ??= canvasBff
         .listAssets()
-        .then((assets) => new Map(assets.filter((asset) => asset.kind === "image" && asset.metadata?.size).map((asset) => [Number(asset.metadata.size), asset])))
+        .then((assets) => new Map(assets.filter((asset) => asset.kind === kind && asset.metadata?.size).map((asset) => [Number(asset.metadata.size), asset])))
         .catch(() => {
-            assetSizeIndexPromise = undefined;
+            assetSizeIndexPromises.delete(kind);
             return new Map<number, CanvasAsset>();
         });
-    return assetSizeIndexPromise;
+    assetSizeIndexPromises.set(kind, promise);
+    return promise;
 }
 
 // 优先读本地缓存；缺失时（换设备/清浏览器数据）通过 BFF asset 引用从云端媒体存储拉回并重新落本地缓存。
@@ -65,7 +67,7 @@ export async function restoreCanvasImage(storageKey: string | undefined, assetId
     if (local) return local;
     if (!storageKey || !isCanvasAccountAuthenticated()) return fallback;
     let asset = assetId ? await canvasBff.getAsset(assetId).catch(() => undefined) : undefined;
-    if (!asset && bytes) asset = (await assetBySizeIndex()).get(bytes);
+    if (!asset && bytes) asset = (await assetBySizeIndex("image")).get(bytes);
     if (!asset?.signedUrl) return fallback;
     const blob = await fetch(asset.signedUrl)
         .then((response) => (response.ok ? response.blob() : undefined))
@@ -83,12 +85,38 @@ async function backfillCanvasAssetId(storageKey: string | undefined, assetId: st
     return uploaded?.id;
 }
 
+// 视频/音频与图片同构：本地缓存优先，缺失时经 assetId（或字节数回查）从云端拉回；
+// 本地 blob 还在时顺手补传云端并回填 assetId，返回值同时携带恢复后的 content 与 assetId。
+async function restoreCanvasMedia(kind: Exclude<CanvasAsset["kind"], "image" | "file">, storageKey: string, assetId: string | undefined, fallback = "", bytes = 0): Promise<{ content: string; assetId?: string }> {
+    const local = await resolveMediaUrl(storageKey, "");
+    if (!isCanvasAccountAuthenticated()) return { content: local || fallback };
+    const uploadedAssetId = assetId || (await backfillCanvasMediaAssetId(storageKey));
+    if (local) return { content: local, ...(uploadedAssetId ? { assetId: uploadedAssetId } : {}) };
+    let asset = uploadedAssetId ? await canvasBff.getAsset(uploadedAssetId).catch(() => undefined) : undefined;
+    if (!asset && bytes) asset = (await assetBySizeIndex(kind)).get(bytes);
+    if (!asset?.signedUrl) return { content: fallback };
+    const blob = await fetch(asset.signedUrl)
+        .then((response) => (response.ok ? response.blob() : undefined))
+        .catch(() => undefined);
+    return blob ? { content: await setMediaBlob(storageKey, blob), ...(uploadedAssetId ? { assetId: uploadedAssetId } : {}) } : { content: fallback };
+}
+
+async function backfillCanvasMediaAssetId(storageKey: string) {
+    const blob = await getMediaBlob(storageKey);
+    if (!blob) return undefined;
+    const uploaded = await canvasBff.uploadAsset(blob, blob.type.startsWith("audio/") ? "audio" : "video").catch(() => undefined);
+    return uploaded?.id;
+}
+
 export async function hydrateCanvasImages(nodes: CanvasNodeData[]) {
     return Promise.all(
         nodes.map(async (node) => {
             const metadata = node.metadata;
             const content = metadata?.content;
-            if ((node.type === CanvasNodeType.Video || node.type === CanvasNodeType.Audio) && metadata?.storageKey) return { ...node, metadata: { ...metadata, content: await resolveMediaUrl(metadata.storageKey, content) } };
+            if ((node.type === CanvasNodeType.Video || node.type === CanvasNodeType.Audio) && metadata?.storageKey) {
+                const restored = await restoreCanvasMedia(node.type === CanvasNodeType.Video ? "video" : "audio", metadata.storageKey, metadata.assetId, content, metadata.bytes);
+                return { ...node, metadata: { ...metadata, ...restored } };
+            }
             if (node.type !== CanvasNodeType.Image || !metadata || !content) return node;
             const images = await Promise.all(
                 (metadata.images || []).map(async (image) => {

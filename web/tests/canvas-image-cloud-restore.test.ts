@@ -165,3 +165,75 @@ test("uploadImage stays local-only when not canvas-authenticated", async () => {
     expect(uploaded.assetId).toBeUndefined();
     expect(requests.filter((url) => url.includes("/v1/assets/upload"))).toEqual([]);
 });
+
+function mediaNode(type: CanvasNodeType, metadata: Record<string, unknown>): CanvasNodeData {
+    return { id: `media-${metadata.storageKey}`, type, title: "media", position: { x: 0, y: 0 }, width: 640, height: 360, metadata: metadata as CanvasNodeData["metadata"] };
+}
+
+test("videoMetadata and audioMetadata carry the cloud assetId onto node metadata", async () => {
+    const { videoMetadata, audioMetadata } = await import("../src/lib/canvas/canvas-node-factory");
+    const uploaded = { url: "blob:local", storageKey: "video:abc", bytes: 3, mimeType: "video/mp4" };
+
+    expect(videoMetadata({ ...uploaded, assetId: "asset-v" }).assetId).toBe("asset-v");
+    expect("assetId" in videoMetadata(uploaded)).toBe(false);
+    expect(audioMetadata({ ...uploaded, storageKey: "audio:abc", assetId: "asset-a" }).assetId).toBe("asset-a");
+    expect("assetId" in audioMetadata({ ...uploaded, storageKey: "audio:abc" })).toBe(false);
+});
+
+test("hydrate restores a missing video from the cloud asset when canvas-authenticated", async () => {
+    await setAccountStatus("authenticated");
+    const { hydrateCanvasImages } = await import("../src/lib/canvas/canvas-generation-helpers");
+    const node = mediaNode(CanvasNodeType.Video, { content: deadBlob, storageKey: "video:cloud", assetId: "asset-v1" });
+    responses.set("/api/v1/assets/asset-v1", {
+        data: { id: "asset-v1", kind: "video", metadata: {}, signedUrl: "https://media.test/signed-video" },
+    });
+    responses.set("https://media.test/signed-video", { data: "binary" });
+
+    const [restored] = await hydrateCanvasImages([node]);
+    expect(restored.metadata?.content).toContain("blob:");
+    expect(requests.some((url) => url.endsWith("/v1/assets/asset-v1"))).toBe(true);
+    expect(requests.some((url) => url === "https://media.test/signed-video")).toBe(true);
+});
+
+test("hydrate backfills a cached video to the cloud and stores its assetId", async () => {
+    await setAccountStatus("authenticated");
+    const { hydrateCanvasImages } = await import("../src/lib/canvas/canvas-generation-helpers");
+    const { setMediaBlob } = await import("../src/services/file-storage");
+    const node = mediaNode(CanvasNodeType.Video, { content: deadBlob, storageKey: "video:backfill" });
+    await setMediaBlob("video:backfill", new Blob(["video-bytes"], { type: "video/mp4" }));
+    responses.set("/api/v1/assets/upload?kind=video", { data: { id: "asset-vb", kind: "video", metadata: {} } });
+
+    const [restored] = await hydrateCanvasImages([node]);
+    expect(restored.metadata?.assetId).toBe("asset-vb");
+    expect(restored.metadata?.content).toContain("blob:");
+    expect(requests.some((url) => url === "/api/v1/assets/upload?kind=video")).toBe(true);
+});
+
+test("hydrate falls back to matching a legacy audio by exact byte size against account assets", async () => {
+    await setAccountStatus("authenticated");
+    const { hydrateCanvasImages } = await import("../src/lib/canvas/canvas-generation-helpers");
+    const node = mediaNode(CanvasNodeType.Audio, { content: deadBlob, storageKey: "audio:legacy", bytes: 234567, status: "success", mimeType: "audio/mpeg" });
+    responses.set("/api/v1/assets", {
+        data: [
+            { id: "asset-image-decoy", kind: "image", metadata: { size: 234567 }, signedUrl: "https://media.test/wrong" },
+            { id: "asset-audio-match", kind: "audio", metadata: { size: 234567 }, signedUrl: "https://media.test/legacy-audio" },
+        ],
+    });
+    responses.set("https://media.test/legacy-audio", { data: "binary" });
+
+    const [restored] = await hydrateCanvasImages([node]);
+    expect(restored.metadata?.content).toContain("blob:");
+    expect(requests.some((url) => url === "/api/v1/assets")).toBe(true);
+    expect(requests.some((url) => url === "https://media.test/legacy-audio")).toBe(true);
+    expect(requests.some((url) => url === "https://media.test/wrong")).toBe(false);
+});
+
+test("hydrate keeps media node fallback content without a session", async () => {
+    await setAccountStatus("unauthenticated");
+    const { hydrateCanvasImages } = await import("../src/lib/canvas/canvas-generation-helpers");
+    const node = mediaNode(CanvasNodeType.Video, { content: deadBlob, storageKey: "video:missing" });
+
+    const [restored] = await hydrateCanvasImages([node]);
+    expect(restored.metadata?.content).toBe(deadBlob);
+    expect(requests).toEqual([]);
+});

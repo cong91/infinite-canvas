@@ -10,7 +10,7 @@ import { boolConfig, buildApiUrl, modelOptionName, resolveModelRequestConfig, re
 import { runModelPlugin } from "./model-plugin";
 import type { ReferenceImage } from "@/types/image";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
-import { isCanvasAccountAuthenticated, submitCanvasGeneration, waitForCanvasGeneration, readCanvasGenerationBlob } from "./canvas-generation";
+import { isCanvasAccountAuthenticated, submitCanvasGeneration, waitForCanvasGeneration, readCanvasGenerationMedia } from "./canvas-generation";
 
 type VideoResponse = { id: string; status?: string; error?: { message?: string }; url?: string; result_url?: string; video_url?: string; content?: { video_url?: string; url?: string } | null };
 type ApiVideoResponse = VideoResponse | { code?: number | string; data?: VideoResponse | null; msg?: string; message?: string; error?: { message?: string } };
@@ -19,7 +19,7 @@ type RequestOptions = { signal?: AbortSignal };
 type VideoMediaOptions = RequestOptions & { videos?: ReferenceVideo[]; audios?: ReferenceAudio[] };
 const apiText = (key: string, options?: Record<string, unknown>) => i18n.t(`apiErrors.${key}`, options);
 
-export type VideoGenerationResult = { blob?: Blob; url?: string; mimeType?: string };
+export type VideoGenerationResult = { blob?: Blob; url?: string; mimeType?: string; assetId?: string };
 export type VideoGenerationTask = { id: string; provider: "openai" | "gemini" | "plugin" | "canvas"; model: string };
 type GeminiInlineData = { bytesBase64Encoded: string; mimeType: string };
 type GeminiVideoOperation = {
@@ -91,7 +91,7 @@ export async function pollVideoGenerationTask(config: AiConfig, task: VideoGener
     if (task.provider === "canvas") {
         try {
             const generation = await waitForCanvasGeneration(task.id, options);
-            return { status: "completed", result: { blob: await readCanvasGenerationBlob(generation, options) } };
+            return { status: "completed", result: await readCanvasGenerationMedia(generation, options) };
         } catch (error) {
             if (options?.signal?.aborted) throw error;
             return { status: "failed", error: error instanceof Error ? error.message : apiText("videoGenerationFailed") };
@@ -152,7 +152,10 @@ function videoPluginResult(result: unknown): VideoGenerationResult {
 }
 
 export async function storeGeneratedVideo(result: VideoGenerationResult): Promise<UploadedFile> {
-    if (result.blob) return uploadMediaFile(result.blob, "video");
+    if (result.blob) {
+        const stored = await uploadMediaFile(result.blob, "video");
+        return { ...stored, ...(result.assetId ? { assetId: result.assetId } : {}) };
+    }
     if (result.url) {
         try {
             return await uploadMediaFile(result.url, "video");
