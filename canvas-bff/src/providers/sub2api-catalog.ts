@@ -152,23 +152,27 @@ function normalizeCatalogItem(value: Record<string, unknown>, keyRecord = false)
     const id = asString(value.id ?? value.key_id ?? value.keyId ?? value.name, ["id", "name"]) ?? "unknown";
     const secret = keyRecord ? asString(value.key ?? value.api_key ?? value.apiKey) : undefined;
     const allowImageGeneration = asOptionalBool(value.allow_image_generation) === true || asOptionalBool(value.allow_batch_image_generation) === true;
+    const composite = asString(value.platform ?? value.platform_type) === "composite";
     return {
         id,
         name: asString(value.name ?? value.display_name ?? value.displayName ?? value.label) ?? id,
         ...(asString(value.provider ?? value.provider_type ?? value.providerType) ? { providerType: asString(value.provider ?? value.provider_type ?? value.providerType) } : {}),
         ...(asString(value.model ?? value.model_name ?? value.modelName) ? { model: asString(value.model ?? value.model_name ?? value.modelName) } : {}),
-        ...(asString(value.group ?? value.group_name ?? value.groupName) ? { group: asString(value.group ?? value.group_name ?? value.groupName) } : {}),
+        ...(asString(value.group ?? value.group_name ?? value.groupName ?? value.group_id ?? value.groupId) ? { group: asString(value.group ?? value.group_name ?? value.groupName ?? value.group_id ?? value.groupId) } : {}),
         ...(asString(value.channel ?? value.channel_name ?? value.channelName) ? { channel: asString(value.channel ?? value.channel_name ?? value.channelName) } : {}),
         ...(asString(value.platform ?? value.platform_type) ? { platform: asString(value.platform ?? value.platform_type) } : {}),
         ...(asOptionalNumber(value.rate_multiplier ?? value.rateMultiplier) !== undefined ? { rateMultiplier: asOptionalNumber(value.rate_multiplier ?? value.rateMultiplier) } : {}),
-        ...(allowImageGeneration ? { allowImageGeneration: true } : {}),
-        ...(isVideoCapable(value) ? { videoCapable: true } : {}),
+        ...(allowImageGeneration || composite ? { allowImageGeneration: true } : {}),
+        ...(isVideoCapable(value, composite) ? { videoCapable: true } : {}),
         ...(secret ? { fingerprint: createHash("sha256").update(secret).digest("hex").slice(0, 16), maskedKey: `****${secret.slice(-4)}` } : {}),
         ...(asString(value.status) ? { status: asString(value.status) } : {}),
     };
 }
 
-function isVideoCapable(value: Record<string, unknown>): boolean {
+// Composite groups route media requests through composite model routes, so they carry
+// no video price fields on the group row but still accept video (and image) keys.
+function isVideoCapable(value: Record<string, unknown>, composite = false): boolean {
+    if (composite) return true;
     const multiplier = asOptionalNumber(value.video_rate_multiplier);
     if (multiplier !== undefined && multiplier > 0) return true;
     if (["video_price_480p", "video_price_720p", "video_price_1080p"].some((key) => (asOptionalNumber(value[key]) ?? 0) > 0)) return true;

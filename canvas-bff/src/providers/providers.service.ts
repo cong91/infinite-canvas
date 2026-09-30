@@ -52,7 +52,9 @@ export class ProvidersService {
 
     async createWithNewKey(accountId: string, sessionToken: string | undefined, input: z.output<typeof providerKeyBody>) {
         const created = await this.catalog.createKey(await this.upstreamToken(sessionToken), { name: input.name, groupId: input.groupId });
-        return this.create(accountId, sessionToken, { name: input.name, providerType: "openai-compatible", group: input.groupId, catalogKeyId: created.item.id, secret: created.secret });
+        // Upstream POST /keys returns only group_id; fall back to the group name the
+        // create-key dropdown already resolved, so providers show "Video" not "48".
+        return this.create(accountId, sessionToken, { name: input.name, providerType: "openai-compatible", group: created.item.group || input.groupId, catalogKeyId: created.item.id, secret: created.secret });
     }
 
     async update(accountId: string, id: string, input: z.output<typeof providerPatch>) { const record = await this.providers.update(accountId, id, input); if (!record) throw new HttpError(404, "PROVIDER_NOT_FOUND", "Provider was not found"); return toPublic(record); }

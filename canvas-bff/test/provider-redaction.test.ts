@@ -109,6 +109,40 @@ test("catalog adapter extracts group capability flags for image and video filter
     assert.equal(textOnly?.videoCapable, undefined);
 });
 
+test("catalog adapter marks composite groups as image and video capable", async () => {
+    const adapter = new Sub2ApiCatalogAdapter("https://sub2api.example.test", async (input) => {
+        const path = new URL(String(input)).pathname;
+        const data = path === "/api/v1/groups/available"
+            ? [
+                { id: 48, name: "Video", platform: "composite", allow_image_generation: false, video_rate_multiplier: 0 },
+                { id: 55, name: "China Model", platform: "composite", allow_image_generation: false },
+                { id: 14, name: "CodexPLUS", platform: "openai", allow_image_generation: false, video_rate_multiplier: 0 },
+            ]
+            : [];
+        return new Response(JSON.stringify({ data }), { status: 200 });
+    });
+    const catalog = await adapter.listCatalog("fixture-token");
+    const byName = new Map(catalog.groups.map((item) => [item.name, item]));
+    const video = byName.get("Video");
+    assert.equal(video?.platform, "composite");
+    assert.equal(video?.videoCapable, true);
+    assert.equal(video?.allowImageGeneration, true);
+    assert.equal(byName.get("China Model")?.videoCapable, true);
+    assert.equal(byName.get("CodexPLUS")?.videoCapable, undefined);
+});
+
+test("catalog adapter falls back to group_id when the key record carries no group name", async () => {
+    const adapter = new Sub2ApiCatalogAdapter("https://sub2api.example.test", async (input) => {
+        const path = new URL(String(input)).pathname;
+        const data = path === "/api/v1/keys"
+            ? [{ id: 2010, name: "probe", key: "sk-secret", group_id: 48 }]
+            : [];
+        return new Response(JSON.stringify({ data }), { status: 200 });
+    });
+    const resolved = await adapter.getApiKeySecret("fixture-token", "2010");
+    assert.equal(resolved.item.group, "48");
+});
+
 test("catalog adapter createKey maps upstream failures and validates the response", async () => {
     const bodies: unknown[] = [];
     const adapter = new Sub2ApiCatalogAdapter("https://sub2api.example.test", async (_input, init) => {
