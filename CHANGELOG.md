@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- [修复] Canvas 账号 provider 的模型按能力筛选误判：`guessCapability` 缺少 Seedance/Jimeng 视频模型关键词（如 `jimeng-seedance-2.5`、`seedance-2.0-mini-deal` 被当作 text），也补上 `grok-imagine-image*`/`nano-banana`/`banana` 图片关键词；此前 composite 视频分组的模型列表里只有 `grok-imagine-video*` 三项出现在视频下拉，Seedance 系列被过滤掉。
+
 - [修复] Canvas「创建 API Key」里 composite 分组不可见的问题：composite 平台分组（如「Video」）在分组下拉中现在同时按图片/视频能力展示（此前默认图片页签下因缺少 `allow_image_generation` 标志而看不到，用户无法为可生成视频的 composite 分组创建 Key）；新 Key 保存的 provider 分组名改用上游返回的组名（缺名时才回退分组 id），不再出现 `48` 或 `[object Object]` 这类分组标签。
 
 - [新增] Canvas 视频时长校验门槛：BFF 按 model 能力校验视频 `seconds`（当前已知 xAI `grok-imagine-video*` 上限 15 秒，经生产环境重放验证），超限请求在提交时即返回 `VIDEO_DURATION_NOT_SUPPORTED` 与具体说明，不静默压低用户时长、也不等到 worker 阶段才以笼统的 `UPSTREAM_HTTP_400` 失败；新增 `GET /api/v1/generations/video-limits` 供前端读取限制，视频设置面板据此约束时长滑杆并在当前值超限时显示行内警告（不自动改动用户已选值），提交失败提示本地化。另修复 smart 模式（seconds ≤ 0）会把 `duration: -1` 透传给上游的问题，现在视为"由 provider 决定"而不发送该字段。
