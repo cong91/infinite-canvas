@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- [修复] Canvas 粘贴图片/文本失效：在生产 Sub2API 跨源 iframe 中 `navigator.clipboard.read()` 因缺少 `clipboard-read` Permissions Policy 被拒绝（NotAllowedError）且无 try/catch 静默失败，导致 Ctrl/Cmd+V 在画布上无任何反馈。改为监听同步 `paste` 事件读取 `clipboardData.files`（图片）与 `text/plain`（文本），不受 iframe 权限策略限制；内部复制节点（Ctrl+C → V）逻辑不变。
+
 - [修复] Canvas 账号 provider 的模型按能力筛选误判：`guessCapability` 缺少 Seedance/Jimeng 视频模型关键词（如 `jimeng-seedance-2.5`、`seedance-2.0-mini-deal` 被当作 text），也补上 `grok-imagine-image*`/`nano-banana`/`banana` 图片关键词；此前 composite 视频分组的模型列表里只有 `grok-imagine-video*` 三项出现在视频下拉，Seedance 系列被过滤掉。
 
 - [修复] Canvas「创建 API Key」里 composite 分组不可见的问题：composite 平台分组（如「Video」）在分组下拉中现在同时按图片/视频能力展示（此前默认图片页签下因缺少 `allow_image_generation` 标志而看不到，用户无法为可生成视频的 composite 分组创建 Key）；新 Key 保存的 provider 分组名改用上游返回的组名（缺名时才回退分组 id），不再出现 `48` 或 `[object Object]` 这类分组标签。

@@ -1647,24 +1647,39 @@ function InfiniteCanvasPage() {
         [getCanvasCenter, t],
     );
 
-    const pasteSystemClipboard = useCallback(async () => {
-        if (!navigator.clipboard) return;
+    // Phép paste hệ thống (ảnh/text) qua sự kiện `paste` đồng bộ — đọc `clipboardData.files`
+    // giúp hoạt động trong iframe cross-origin (Sub2API) không cần Permissions Policy `clipboard-read`.
+    // `navigator.clipboard.read()` sẽ bị trình duyệt từ chối (NotAllowedError) trong iframe thiếu `allow`.
+    const handleSystemPaste = useCallback(
+        (event: ClipboardEvent) => {
+            if (event.defaultPrevented) return;
+            const target = event.target instanceof Element ? event.target : null;
+            const isInsideEditable =
+                event.target instanceof HTMLInputElement ||
+                event.target instanceof HTMLTextAreaElement ||
+                event.target instanceof HTMLSelectElement ||
+                Boolean(target?.closest("[contenteditable='true']"));
 
-        const items = await navigator.clipboard.read();
-        const imageItem = items.find((item) => item.types.some((type) => type.startsWith("image/")));
-        if (imageItem) {
-            const imageType = imageItem.types.find((type) => type.startsWith("image/"));
-            if (!imageType) return;
-            const blob = await imageItem.getType(imageType);
-            const file = new File([blob], "clipboard-image.png", { type: imageType });
-            void createImageFileNode(file, getCanvasCenter());
-            message.success(t("canvas.projectPage.clipboardImageAdded"));
-            return;
-        }
+            const files = Array.from(event.clipboardData?.files || []);
+            const imageFile = files.find((file) => file.type.startsWith("image/"));
+            if (imageFile) {
+                event.preventDefault();
+                void createImageFileNode(imageFile, getCanvasCenter());
+                message.success(t("canvas.projectPage.clipboardImageAdded"));
+                return;
+            }
 
-        const text = await navigator.clipboard.readText();
-        if (createTextNodeFromClipboard(text)) message.success(t("canvas.projectPage.clipboardTextAdded"));
-    }, [createImageFileNode, createTextNodeFromClipboard, getCanvasCenter, message, t]);
+            // Để input/textarea/contentEditable (chat panel, tên node...) tự xử lý text paste.
+            if (isInsideEditable) return;
+
+            const text = event.clipboardData?.getData("text/plain") || "";
+            if (createTextNodeFromClipboard(text)) {
+                event.preventDefault();
+                message.success(t("canvas.projectPage.clipboardTextAdded"));
+            }
+        },
+        [createImageFileNode, createTextNodeFromClipboard, getCanvasCenter, message, t],
+    );
 
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
@@ -1721,8 +1736,11 @@ function InfiniteCanvasPage() {
             }
 
             if (isModifierShortcut && !event.altKey && key === "v") {
-                event.preventDefault();
-                if (!pasteCopiedNodes()) void pasteSystemClipboard();
+                // Nếu có node nội bộ đã copy (Ctrl+C trong canvas), dán nội bộ và chặn paste mặc định.
+                // Nếu không, KHÔNG preventDefault — để sự kiện `paste` native bắn lên window,
+                // handleSystemPaste sẽ đọc clipboardData.files (ảnh) hoặc text/plain một cách đồng bộ,
+                // hoạt động cả trong iframe cross-origin không có Permissions Policy clipboard-read.
+                if (pasteCopiedNodes()) event.preventDefault();
                 return;
             }
 
@@ -1752,8 +1770,12 @@ function InfiniteCanvasPage() {
         };
 
         window.addEventListener("keydown", handleKeyDown);
-        return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [copySelectedNodes, deleteConnection, deleteNodes, groupSelection, pasteCopiedNodes, pasteSystemClipboard, redoCanvas, selectedConnectionId, setConnecting, undoCanvas, ungroupSelection]);
+        window.addEventListener("paste", handleSystemPaste);
+        return () => {
+            window.removeEventListener("keydown", handleKeyDown);
+            window.removeEventListener("paste", handleSystemPaste);
+        };
+    }, [copySelectedNodes, deleteConnection, deleteNodes, groupSelection, handleSystemPaste, pasteCopiedNodes, redoCanvas, selectedConnectionId, setConnecting, undoCanvas, ungroupSelection]);
 
     const handleConnectStart = useCallback(
         (event: ReactMouseEvent, nodeId: string, handleType: "source" | "target") => {
