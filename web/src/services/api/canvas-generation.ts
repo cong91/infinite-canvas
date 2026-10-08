@@ -28,7 +28,9 @@ export async function submitCanvasGeneration(kind: CanvasGeneration["kind"], con
     if (!providerState.providersLoaded && providerState.error) throw new Error(providerState.error);
     const providers = providerState.providers;
     const capabilityModel = kind === "image" ? config.imageModel : kind === "video" ? config.videoModel : kind === "audio" ? config.audioModel : config.textModel;
-    const selectedValue = capabilityModel || config.model;
+    // config.model mang lựa chọn per-node trên canvas (canvas::providerId::model);
+    // chỉ dùng capabilityModel (global "Studio defaults") khi node chưa chọn.
+    const selectedValue = (config.model?.startsWith("canvas::") ? config.model : "") || capabilityModel || config.model;
     const configuredModel = modelOptionName(selectedValue);
     const explicitModel = decodeCanvasModel(selectedValue) || decodeCanvasModel(config.model || "");
     const selectedProviderId = explicitModel?.providerId;
