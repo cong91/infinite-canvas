@@ -530,6 +530,96 @@ test("Sub2API video adapter routes a source video through the edits contract", a
   assert.equal(body.referenceAudios, undefined);
 });
 
+test("Sub2API video edit falls back to generations when the edits endpoint is missing", async () => {
+  const { providers, provider } = fixture(undefined, "sub2api-video-key-edit-404");
+  const requests: Request[] = [];
+  const adapter = new HttpGenerationProvider({
+    baseUrl: "https://sub2api.example.test",
+    providers,
+    secretBox,
+    fetchImpl: async (input, init) => {
+      const request = new Request(input, init);
+      requests.push(request);
+      if (request.url.endsWith("/v1/videos/edits"))
+        return new Response(
+          JSON.stringify({ error: { message: "Invalid URL (POST /v1/videos/edits)", type: "not_found_error" } }),
+          { status: 404, headers: { "Content-Type": "application/json" } },
+        );
+      return new Response(
+        JSON.stringify({ id: "task_new_api_edit", status: "queued" }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    },
+  });
+
+  await adapter.start({
+    id: "generation-video-edit-404",
+    accountId: "account-a",
+    projectId: "project-1",
+    providerId: provider.id,
+    kind: "video",
+    input: {
+      prompt: "restyle this clip",
+      model: "seedance-2.0-mini-M",
+      referenceVideos: ["data:video/mp4;base64,clip-a"],
+    },
+    inputHash: "hash-video-edit-404",
+    clientRequestId: "request-video-edit-404",
+    status: "running",
+    progress: 0,
+    attempt: 0,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0].url, "https://sub2api.example.test/v1/videos/edits");
+  assert.equal(requests[1].url, "https://sub2api.example.test/v1/videos/generations");
+  const body = (await requests[1].json()) as { video?: { url?: string } };
+  assert.deepEqual(body.video, { url: "data:video/mp4;base64,clip-a" });
+});
+
+test("Sub2API video edit does not fall back on non-404 edit failures", async () => {
+  const { providers, provider } = fixture(undefined, "sub2api-video-key-edit-502");
+  const requests: Request[] = [];
+  const adapter = new HttpGenerationProvider({
+    baseUrl: "https://sub2api.example.test",
+    providers,
+    secretBox,
+    fetchImpl: async (input, init) => {
+      const request = new Request(input, init);
+      requests.push(request);
+      return new Response(JSON.stringify({ error: { message: "upstream down" } }), {
+        status: 502,
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+  });
+
+  await adapter.start({
+    id: "generation-video-edit-502",
+    accountId: "account-a",
+    projectId: "project-1",
+    providerId: provider.id,
+    kind: "video",
+    input: {
+      prompt: "restyle this clip",
+      model: "seedance-2.0-mini-M",
+      referenceVideos: ["data:video/mp4;base64,clip-a"],
+    },
+    inputHash: "hash-video-edit-502",
+    clientRequestId: "request-video-edit-502",
+    status: "running",
+    progress: 0,
+    attempt: 0,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].url, "https://sub2api.example.test/v1/videos/edits");
+});
+
 test("video adapter accepts nested request IDs returned by Sub2API", async () => {
   const { providers, provider } = fixture(undefined, "sub2api-video-key-nested");
   const requests: Request[] = [];

@@ -202,29 +202,45 @@ export class HttpGenerationProvider implements GenerationProvider {
     const intent = buildGenerationIntent(generation);
     // A source video turns the request into a Grok video edit; the gateway
     // exposes that contract on /v1/videos/edits instead of generations.
-    const sub2ApiEndpoint = intent.parameters.video
-      ? "/v1/videos/edits"
-      : "/v1/videos/generations";
-    const response = await this.request(
-      context.baseUrl,
+    const wantsEditEndpoint = Boolean(intent.parameters.video);
+    const body =
       context.protocol === "sub2api"
-        ? sub2ApiEndpoint
-        : "/v1/videos",
-      context.secret,
-      {
-        method: "POST",
-        idempotencyKey: generation.clientRequestId,
-        body:
-          context.protocol === "sub2api"
-            ? generationIntentToSub2ApiBody(intent)
-            : {
-                model: intent.model,
-                prompt: intent.prompt,
-                seconds: inputString(generation, "seconds") || undefined,
-                size: inputString(generation, "size") || undefined,
-              },
-      },
-    );
+        ? generationIntentToSub2ApiBody(intent)
+        : {
+            model: intent.model,
+            prompt: intent.prompt,
+            seconds: inputString(generation, "seconds") || undefined,
+            size: inputString(generation, "size") || undefined,
+          };
+    const firstPath =
+      context.protocol === "sub2api"
+        ? wantsEditEndpoint
+          ? "/v1/videos/edits"
+          : "/v1/videos/generations"
+        : "/v1/videos";
+    let response = await this.request(context.baseUrl, firstPath, context.secret, {
+      method: "POST",
+      idempotencyKey: generation.clientRequestId,
+      body,
+    });
+    // New-api style gateways (e.g. iliu.ai) accept image/video references on the
+    // generations endpoint but have no /v1/videos/edits route. Retry once there
+    // when the gateway reports the edit endpoint is missing, forwarding the same
+    // body (video:{url}, audio:{url}, reference_images) so the upstream can run
+    // the edit via its generations contract.
+    if (
+      !response.ok &&
+      response.status === 404 &&
+      context.protocol === "sub2api" &&
+      wantsEditEndpoint
+    ) {
+      response = await this.request(
+        context.baseUrl,
+        "/v1/videos/generations",
+        context.secret,
+        { method: "POST", idempotencyKey: `${generation.clientRequestId}-edit`, body },
+      );
+    }
     if (!response.ok) return httpFailure(response);
     const payload = await jsonBody(response);
     const data = recordValue(payload.data);

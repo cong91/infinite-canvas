@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- [修复] Canvas 视频编辑请求在上游不支持 `/v1/videos/edits` 时自动回退：new-api 风格网关（如 iliu.ai）把 image/video 参考直接放在 `/v1/videos/generations` 请求体里，没有独立的 edits 端点；此前 BFF 一律走 `/v1/videos/edits`，导致带源视频的编辑任务在这些上游上以 UPSTREAM_HTTP_404 失败。现在 edits 端点返回 404 时，BFF 自动用同一请求体重试 `/v1/videos/generations`（保留 `video:{url}`、`audio:{url}`、`reference_images` 字段），xAI 真实端点不受影响（edits 成功即不触发回退）。
+
+- [修复] Canvas 生成请求误用全局默认模型：节点上选择的 provider/model（如 Seedance `composer-2.5`）被 Studio 全局默认（`videoModel`/`imageModel`，如 `grok-imagine-video-1.5-preview`、`gpt-image-2.5-flare`）静默覆盖，导致按 Seedance 提交的请求实际打到 Grok/gpt-image 渠道并失败；现在节点级 `canvas::` 选择优先，节点未选择时才回退全局默认。同时在视频模型关键词中补充 `composer`，Seedance `composer-2.5` 不再被误判为 text 能力而从视频下拉中消失。
+
 - [修复] Canvas 粘贴图片/文本失效：在生产 Sub2API 跨源 iframe 中 `navigator.clipboard.read()` 因缺少 `clipboard-read` Permissions Policy 被拒绝（NotAllowedError）且无 try/catch 静默失败，导致 Ctrl/Cmd+V 在画布上无任何反馈。改为监听同步 `paste` 事件读取 `clipboardData.files`（图片）与 `text/plain`（文本），不受 iframe 权限策略限制；内部复制节点（Ctrl+C → V）逻辑不变。
 
 - [修复] Canvas 账号 provider 的模型按能力筛选误判：`guessCapability` 缺少 Seedance/Jimeng 视频模型关键词（如 `jimeng-seedance-2.5`、`seedance-2.0-mini-deal` 被当作 text），也补上 `grok-imagine-image*`/`nano-banana`/`banana` 图片关键词；此前 composite 视频分组的模型列表里只有 `grok-imagine-video*` 三项出现在视频下拉，Seedance 系列被过滤掉。
