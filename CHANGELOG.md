@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- [修复] Canvas Seedance 视频请求体改为 new-api 兼容合约：`aspect_ratio`/`watermark` 会被 iliu.ai 等网关的 Seedance 渠道以 502「暂时不可用」拒绝，Seedance 模型现在改用 `ratio` 并省略 `watermark`，Grok 视频仍保持原字段。
+
 - [修复] Canvas 视频编辑请求在上游不支持 `/v1/videos/edits` 时自动回退：new-api 风格网关（如 iliu.ai）把 image/video 参考直接放在 `/v1/videos/generations` 请求体里，没有独立的 edits 端点；此前 BFF 一律走 `/v1/videos/edits`，导致带源视频的编辑任务在这些上游上以 UPSTREAM_HTTP_404 失败。现在 edits 端点返回 404 时，BFF 自动用同一请求体重试 `/v1/videos/generations`（保留 `video:{url}`、`audio:{url}`、`reference_images` 字段），xAI 真实端点不受影响（edits 成功即不触发回退）。
 
 - [修复] Canvas 生成请求误用全局默认模型：节点上选择的 provider/model（如 Seedance `composer-2.5`）被 Studio 全局默认（`videoModel`/`imageModel`，如 `grok-imagine-video-1.5-preview`、`gpt-image-2.5-flare`）静默覆盖，导致按 Seedance 提交的请求实际打到 Grok/gpt-image 渠道并失败；现在节点级 `canvas::` 选择优先，节点未选择时才回退全局默认。同时在视频模型关键词中补充 `composer`，Seedance `composer-2.5` 不再被误判为 text 能力而从视频下拉中消失。

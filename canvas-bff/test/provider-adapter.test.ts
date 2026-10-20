@@ -426,6 +426,60 @@ test("Sub2API video adapter sends a canonical intent without model-specific rout
   assert.equal(requests[2].headers.has("authorization"), false);
 });
 
+test("Sub2API video adapter uses the new-api ratio contract for seedance models", async () => {
+  const { providers, provider } = fixture(undefined, "sub2api-video-key-seedance");
+  let request: Request | undefined;
+  const adapter = new HttpGenerationProvider({
+    baseUrl: "https://sub2api.example.test",
+    providers,
+    secretBox,
+    fetchImpl: async (input, init) => {
+      request = new Request(input, init);
+      return new Response(
+        JSON.stringify({ task_id: "seedance-task-1", status: "queued" }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    },
+  });
+  const generation = {
+    id: "generation-seedance-video",
+    accountId: "account-a",
+    projectId: "project-1",
+    providerId: provider.id,
+    kind: "video" as const,
+    input: {
+      prompt: "a moving tree",
+      model: "seedance2.5",
+      seconds: "6",
+      size: "720x720",
+      quality: "720",
+      generateAudio: "true",
+      watermark: "false",
+    },
+    inputHash: "hash-seedance-video",
+    clientRequestId: "request-seedance-video",
+    status: "running" as const,
+    progress: 0,
+    attempt: 0,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  assert.deepEqual(await adapter.start(generation), {
+    status: "pending",
+    providerTaskId: "seedance-task-1",
+    progress: 0,
+  });
+  assert.deepEqual(await request?.json(), {
+    model: "seedance2.5",
+    prompt: "a moving tree",
+    duration: 6,
+    resolution: "720p",
+    ratio: "1:1",
+    generate_audio: true,
+  });
+});
+
 test("Sub2API video adapter forwards reference images in the gateway contract", async () => {
   const { providers, provider } = fixture(undefined, "sub2api-video-key-refs");
   let request: Request | undefined;

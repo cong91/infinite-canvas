@@ -36,7 +36,7 @@ export function buildGenerationIntent(
     parameters[canonicalParameterName(key)] = value;
   }
 
-  if (kind === "video") normalizeVideoParameters(input, parameters);
+  if (kind === "video") normalizeVideoParameters(input, parameters, model);
 
   return { kind, model, prompt, parameters };
 }
@@ -55,6 +55,7 @@ export function generationIntentToSub2ApiBody(
 function normalizeVideoParameters(
   input: Record<string, unknown>,
   parameters: Record<string, unknown>,
+  model: string,
 ) {
   for (const key of [
     "seconds",
@@ -80,17 +81,21 @@ function normalizeVideoParameters(
   );
   if (resolution) parameters.resolution = resolution;
 
+  // New-api seedance channels (e.g. iliu.ai) accept `ratio` but reject
+  // `aspect_ratio`/`watermark` with a 502, so keep those fields Grok-only.
+  const seedance = /seedance/i.test(model);
+
   const aspectRatio = normalizeAspectRatio(
     stringValue(input.aspect_ratio ?? input.aspectRatio ?? input.ratio) ||
       stringValue(input.size),
   );
-  if (aspectRatio) parameters.aspect_ratio = aspectRatio;
+  if (aspectRatio) parameters[seedance ? "ratio" : "aspect_ratio"] = aspectRatio;
 
   const generateAudio = booleanValue(input.generate_audio ?? input.generateAudio);
   if (generateAudio !== undefined) parameters.generate_audio = generateAudio;
 
   const watermark = booleanValue(input.watermark);
-  if (watermark !== undefined) parameters.watermark = watermark;
+  if (watermark !== undefined && !seedance) parameters.watermark = watermark;
 }
 
 function canonicalParameterName(key: string) {
