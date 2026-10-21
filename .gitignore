@@ -14,4 +14,10 @@ web/dist
 web/public/plugins
 plugins/canvas/*/dist
 plugins/canvas/*/node_modules
-web/public/plugins
+
+# Local tool state and scratch output (agent context, caches, temp dumps)
+.zcode/
+.codex/
+.tmp/
+.vite/
+*.tmp
