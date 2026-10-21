@@ -46,7 +46,7 @@ test("generation routes create idempotent records and enforce session ownership"
     }
 });
 
-test("video generation rejects reference images on text-only models", async () => {
+test("video generation accepts reference images for seedance models", async () => {
     const sessions = new SessionService(new InMemorySessionRepository());
     const projects = new InMemoryProjectRepository();
     const providers = new InMemoryProviderRepository();
@@ -63,14 +63,9 @@ test("video generation rejects reference images on text-only models", async () =
     const submit = (input: Record<string, unknown>, clientRequestId: string) =>
         fetch(`${url}/api/v1/generations`, { method: "POST", headers: { Origin: config.canvasOrigin, Cookie: cookie, "Content-Type": "application/json" }, body: JSON.stringify({ projectId: project.id, providerId: provider.id, kind: "video", input, clientRequestId }) });
     try {
-        const rejected = await submit({ model: "seedance2.5", prompt: "forest", referenceImages: ["data:image/png;base64,abc"] }, "request-ref-1");
-        assert.equal(rejected.status, 400);
-        const body = (await rejected.json()) as { code: string; message: string };
-        assert.equal(body.code, "VIDEO_REFERENCE_NOT_SUPPORTED");
-        assert.match(body.message, /seedance2\.5-A/);
-        const supported = await submit({ model: "seedance2.5-A", prompt: "forest", referenceImages: ["data:image/png;base64,abc"] }, "request-ref-2");
-        assert.equal(supported.status, 201);
-        const textOnly = await submit({ model: "seedance2.5", prompt: "forest" }, "request-ref-3");
+        const withReference = await submit({ model: "seedance2.5", prompt: "forest", referenceImages: ["data:image/png;base64,abc"] }, "request-ref-1");
+        assert.equal(withReference.status, 201);
+        const textOnly = await submit({ model: "seedance2.5", prompt: "forest" }, "request-ref-2");
         assert.equal(textOnly.status, 201);
     } finally {
         await app.close();

@@ -20,7 +20,14 @@ export function buildGenerationIntent(
     if (key === "model" || key === "prompt" || value === undefined || value === null)
       continue;
     if (key === "referenceImages") {
-      parameters.reference_images = imageReferencePayload(value);
+      const urls = imageReferenceUrls(value);
+      if (urls.length) {
+        // Seedance takes the input frame as `input_reference`; xAI takes
+        // `reference_images`. Sending xAI's field to Seedance leaves the task
+        // typed text-to-video and the reference is dropped upstream.
+        if (isSeedanceModel(model)) parameters.input_reference = urls[0];
+        else parameters.reference_images = urls.map((url) => ({ image_url: url }));
+      }
       continue;
     }
     if (key === "referenceVideos") {
@@ -119,12 +126,15 @@ function isEmptyParameter(value: unknown): boolean {
   return typeof value === "object" && Object.keys(value).length === 0;
 }
 
-/** Gateway contract: image references travel as {image_url} objects (data or https URLs). */
-function imageReferencePayload(value: unknown) {
-  if (!Array.isArray(value)) return value;
-  return value
-    .filter((item): item is string => typeof item === "string" && item.trim() !== "")
-    .map((url) => ({ image_url: url }));
+function imageReferenceUrls(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && item.trim() !== "")
+    : [];
+}
+
+/** Seedance/Doubao channels read the input frame from `input_reference`, not `reference_images`. */
+function isSeedanceModel(model: string) {
+  return /seedance|doubao/i.test(model);
 }
 
 /** Grok media contract: the source video/audio is a single {url} object. */

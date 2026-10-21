@@ -623,6 +623,47 @@ test("Sub2API adapter surfaces upstream request ids for log tracing", async () =
   assert.equal(result.providerClientRequestId, "client-request-1");
 });
 
+test("Sub2API video adapter sends seedance references as input_reference", async () => {
+  const { providers, provider } = fixture(undefined, "sub2api-seedance-ref-key");
+  let request: Request | undefined;
+  const adapter = new HttpGenerationProvider({
+    baseUrl: "https://sub2api.example.test",
+    providers,
+    secretBox,
+    fetchImpl: async (input, init) => {
+      request = new Request(input, init);
+      return new Response(JSON.stringify({ request_id: "seedance-task-ref" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+  });
+
+  await adapter.start({
+    id: "generation-seedance-ref",
+    accountId: "account-a",
+    projectId: "project-1",
+    providerId: provider.id,
+    kind: "video",
+    input: {
+      prompt: "animate the frame",
+      model: "seedance2.5-A",
+      referenceImages: ["data:image/png;base64,ref-a"],
+    },
+    inputHash: "hash-seedance-ref",
+    clientRequestId: "request-seedance-ref",
+    status: "running",
+    progress: 0,
+    attempt: 0,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+
+  const body = (await request?.json()) as Record<string, unknown>;
+  assert.equal(body.input_reference, "data:image/png;base64,ref-a");
+  assert.equal("reference_images" in body, false);
+});
+
 test("Sub2API video adapter routes a source video through the edits contract", async () => {
   const { providers, provider } = fixture(undefined, "sub2api-video-key-edit");
   let request: Request | undefined;
