@@ -123,6 +123,8 @@ export default {
     apiErrors: {
         requestFailed: "请求失败",
         requestCanceled: "请求已取消",
+        requestId: "请求 ID：{{requestId}}",
+        upstreamRequestId: "上游 ID：{{requestId}}",
         baseUrlRequired: "请先配置 Base URL",
         apiKeyRequired: "请先配置 API Key",
         authenticationFailed: "鉴权失败，请检查 API Key、套餐权限或模型权限",

@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 
-import type { GenerationRecord, GenerationRepository } from "./repository.js";
+import type { GenerationRecord, GenerationRepository, ProviderTrace } from "./repository.js";
 
-const columns = "id, account_id, project_id, provider_id, kind, input, input_hash, client_request_id, status, progress, provider_task_id, attempt, lease_owner, lease_expires_at, error_code, output_asset_id, created_at, updated_at";
+const columns = "id, account_id, project_id, provider_id, kind, input, input_hash, client_request_id, status, progress, provider_task_id, attempt, lease_owner, lease_expires_at, error_code, output_asset_id, provider_request_id, provider_client_request_id, created_at, updated_at";
 const baseQuery = `SELECT ${columns} FROM canvas_generations`;
 
 export class PostgresGenerationRepository implements GenerationRepository {
@@ -79,6 +79,11 @@ export class PostgresGenerationRepository implements GenerationRepository {
         return result.rowCount === 1;
     }
 
+    async setProviderTrace(id: string, workerId: string, trace: ProviderTrace): Promise<boolean> {
+        const result = await this.pool.query("UPDATE canvas_generations SET provider_request_id = COALESCE($3, provider_request_id), provider_client_request_id = COALESCE($4, provider_client_request_id), updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND lease_owner = $2", [id, workerId, trace.providerRequestId ?? null, trace.providerClientRequestId ?? null]);
+        return result.rowCount === 1;
+    }
+
     async complete(id: string, workerId: string, outputAssetId: string): Promise<boolean> {
         const result = await this.pool.query("UPDATE canvas_generations SET status = 'succeeded', progress = 100, output_asset_id = $3, lease_owner = NULL, lease_expires_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND lease_owner = $2 AND status <> 'cancelled'", [id, workerId, outputAssetId]);
         return result.rowCount === 1;
@@ -108,6 +113,8 @@ function toGeneration(row: Record<string, unknown>): GenerationRecord {
         ...(row.lease_expires_at ? { leaseExpiresAt: new Date(String(row.lease_expires_at)) } : {}),
         ...(row.error_code ? { errorCode: String(row.error_code) } : {}),
         ...(row.output_asset_id ? { outputAssetId: String(row.output_asset_id) } : {}),
+        ...(row.provider_request_id ? { providerRequestId: String(row.provider_request_id) } : {}),
+        ...(row.provider_client_request_id ? { providerClientRequestId: String(row.provider_client_request_id) } : {}),
         createdAt: new Date(String(row.created_at)),
         updatedAt: new Date(String(row.updated_at)),
     };

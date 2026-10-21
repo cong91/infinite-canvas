@@ -1,14 +1,15 @@
 import type { AssetRepository } from "../assets/repository.js";
 import type { ProviderRepository } from "../providers/repository.js";
-import type { GenerationRecord, GenerationRepository } from "../generations/repository.js";
+import type { GenerationRecord, GenerationRepository, ProviderTrace } from "../generations/repository.js";
 import type { ObjectStorage } from "../storage/object-storage.js";
 import type { ObjectStorageRetention } from "../storage/retention.js";
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 
-export type ProviderResult =
+export type ProviderResult = (
     | { status: "succeeded"; data: Buffer | Uint8Array | string; contentType: string; providerUrl?: string }
     | { status: "pending"; providerTaskId: string; progress?: number }
-    | { status: "failed"; retryable: boolean; errorCode: string };
+    | { status: "failed"; retryable: boolean; errorCode: string }
+) & ProviderTrace;
 
 export type GenerationProvider = {
     start(generation: GenerationRecord): Promise<ProviderResult>;
@@ -27,6 +28,7 @@ export class GenerationWorker {
     private readonly retryBackoffMaxMs: number;
     private readonly now: () => number;
     private readonly retention?: ObjectStorageRetention;
+    private readonly logger = new Logger(GenerationWorker.name);
 
     constructor(options: { generationRepository: GenerationRepository; assetRepository: AssetRepository; objectStorage: ObjectStorage; provider: GenerationProvider; workerId: string; leaseMs?: number; maxAttempts?: number; retryBackoffBaseMs?: number; retryBackoffMaxMs?: number; now?: () => number; retention?: ObjectStorageRetention }) {
         this.generations = options.generationRepository;
@@ -51,6 +53,12 @@ export class GenerationWorker {
         }
         if (generation.status === "cancelled") return undefined;
         const result = generation.providerTaskId ? await this.provider.poll(generation) : await this.provider.start(generation);
+        const trace = providerTrace(result);
+        if (trace && (trace.providerRequestId !== generation.providerRequestId || trace.providerClientRequestId !== generation.providerClientRequestId))
+            await this.generations.setProviderTrace(generation.id, this.workerId, trace);
+        const line = `generation=${generation.id} attempt=${generation.attempt} kind=${generation.kind} model=${String(generation.input.model ?? "")} result=${result.status}${result.status === "failed" ? ` error=${result.errorCode} retryable=${result.retryable}` : ""} upstream_request=${trace?.providerRequestId ?? generation.providerRequestId ?? "-"} upstream_client=${trace?.providerClientRequestId ?? generation.providerClientRequestId ?? "-"}`;
+        if (result.status === "pending") this.logger.debug(line);
+        else this.logger.log(line);
         if (result.status === "pending") {
             await this.generations.setProviderTask(generation.id, result.providerTaskId, this.workerId, new Date(this.now() + this.leaseMs));
             if (result.progress !== undefined) await this.generations.updateProgress(generation.id, this.workerId, result.progress);
@@ -88,6 +96,12 @@ export class GenerationWorker {
             console.warn("Canvas storage retention failed", error);
         }
     }
+}
+
+function providerTrace(result: ProviderResult): ProviderTrace | undefined {
+    return result.providerRequestId || result.providerClientRequestId
+        ? { ...(result.providerRequestId ? { providerRequestId: result.providerRequestId } : {}), ...(result.providerClientRequestId ? { providerClientRequestId: result.providerClientRequestId } : {}) }
+        : undefined;
 }
 
 @Injectable()

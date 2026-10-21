@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- [新增] 生成任务请求 ID 全链路可追踪：worker 现在捕获 Sub2API 响应头 `x-request-id` / `x-client-request-id` 并写入 `canvas_generations.provider_request_id` / `provider_client_request_id`，同时按 `generation=<id> attempt=<n> model=<m> result=<status> upstream_request=<id> upstream_client=<id>` 格式输出日志；画布、图片/视频工作台等所有生成失败提示都会附带「Mã request」（生成 ID）和「Mã upstream」（Sub2API client_request_id），所有 BFF 接口错误也会带上本次 HTTP 请求的 requestId，便于直接 grep 日志定位。
+
+- [修复] Seedance 参考图模型门槛：`seedance2.5` 是纯文生视频，带任何图片字段（`reference_images`/`image`）都会被上游以「暂时不可用 / 422 不支持字段 reference_images」拒绝（已用 iliu.ai 实 key 逐个字段重放验证，`seedance2.5-A` 则正常返回 200 task）。现在提交时即返回 `VIDEO_REFERENCE_NOT_SUPPORTED` 并提示改用 `seedance2.5-A`，不再等到 worker 阶段才变成笼统的上游 502/422。
+
 - [修复] Canvas 生成请求体不再携带空字段：未选择参考素材时，BFF 仍会向上游发送 `reference_images: []`，Seedance 等上游直接返回 422「不支持字段 reference_images」（已在 OVH 用真实网关重放复现：带空数组失败、省略该字段返回 200 任务 id）。现在 Generation Intent 在发往 Sub2API 前统一剔除空字符串、空数组、空对象与 null 参数，没有参考图的请求体与上游合约一致。
 
 - [修复] Canvas Seedance 视频请求体改为 new-api 兼容合约：`aspect_ratio`/`watermark` 会被 iliu.ai 等网关的 Seedance 渠道以 502「暂时不可用」拒绝，Seedance 模型现在改用 `ratio` 并省略 `watermark`，Grok 视频仍保持原字段。

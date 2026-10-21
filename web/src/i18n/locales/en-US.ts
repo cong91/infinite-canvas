@@ -129,6 +129,8 @@ export default {
     apiErrors: {
         requestFailed: "Request failed",
         requestCanceled: "Request canceled",
+        requestId: "Request ID: {{requestId}}",
+        upstreamRequestId: "Upstream ID: {{requestId}}",
         baseUrlRequired: "Configure the Base URL first",
         apiKeyRequired: "Configure the API key first",
         authenticationFailed: "Authentication failed. Check the API key, plan permissions, and model permissions.",

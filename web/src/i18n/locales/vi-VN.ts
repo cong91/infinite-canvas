@@ -180,6 +180,8 @@ export default {
     apiErrors: {
         requestFailed: "Yêu cầu thất bại",
         requestCanceled: "Đã hủy yêu cầu",
+        requestId: "Mã request: {{requestId}}",
+        upstreamRequestId: "Mã upstream: {{requestId}}",
         baseUrlRequired: "Hãy cấu hình Base URL trước",
         apiKeyRequired: "Hãy cấu hình API key trước",
         authenticationFailed: "Xác thực thất bại. Kiểm tra API key, quyền gói dịch vụ và quyền của model.",

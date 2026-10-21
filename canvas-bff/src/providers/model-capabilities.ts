@@ -21,3 +21,17 @@ export function videoDurationLimit(model: string | undefined): number | undefine
 export function videoDurationLimits(): ModelCapabilityRule[] {
     return VIDEO_DURATION_LIMITS;
 }
+
+const VIDEO_REFERENCE_VARIANTS: Record<string, string> = {
+    // Verified by iliu.ai replay 2026-10-21: plain `seedance2.5` answers every image
+    // field (`reference_images`/`image`) with "暂时不可用"; `seedance2.5-A` accepts them.
+    "seedance2.5": "seedance2.5-A",
+};
+
+/** Returns the image-to-video sibling model when the requested model rejects reference images. */
+export function videoReferenceVariant(model: string | undefined): string | undefined {
+    const name = String(model ?? "")
+        .trim()
+        .toLowerCase();
+    return name ? VIDEO_REFERENCE_VARIANTS[name] : undefined;
+}

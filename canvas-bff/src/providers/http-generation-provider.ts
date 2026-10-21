@@ -4,7 +4,7 @@ import type {
   GenerationProvider,
   ProviderResult,
 } from "../worker/generation-worker.js";
-import type { GenerationRecord } from "../generations/repository.js";
+import type { GenerationRecord, ProviderTrace } from "../generations/repository.js";
 import { ProviderSecretBox } from "../crypto/secret-box.js";
 import type { ProviderRepository } from "./repository.js";
 import {
@@ -26,6 +26,8 @@ export class HttpGenerationProvider implements GenerationProvider {
   private readonly secretBox: ProviderSecretBox;
   private readonly fetchImpl: FetchLike;
   private readonly timeoutMs?: number;
+  /** Correlation ids of the latest upstream response, attached to the worker result. */
+  private trace: ProviderTrace = {};
 
   constructor(options: {
     baseUrl: string;
@@ -42,6 +44,16 @@ export class HttpGenerationProvider implements GenerationProvider {
   }
 
   async start(generation: GenerationRecord): Promise<ProviderResult> {
+    this.trace = {};
+    return withTrace(await this.startInner(generation), this.trace);
+  }
+
+  async poll(generation: GenerationRecord): Promise<ProviderResult> {
+    this.trace = {};
+    return withTrace(await this.pollInner(generation), this.trace);
+  }
+
+  private async startInner(generation: GenerationRecord): Promise<ProviderResult> {
     const context = await this.providerContext(generation);
     if (!context)
       return {
@@ -58,7 +70,7 @@ export class HttpGenerationProvider implements GenerationProvider {
     return this.text(context.baseUrl, context.secret, generation);
   }
 
-  async poll(generation: GenerationRecord): Promise<ProviderResult> {
+  private async pollInner(generation: GenerationRecord): Promise<ProviderResult> {
     const context = await this.providerContext(generation);
     if (!context)
       return {
@@ -439,7 +451,7 @@ export class HttpGenerationProvider implements GenerationProvider {
       ? setTimeout(() => controller.abort(), this.timeoutMs)
       : undefined;
     try {
-      return await this.fetchImpl(
+      const response = await this.fetchImpl(
         path.startsWith("http") ? path : `${baseUrl}${path}`,
         {
           method: options.method ?? "GET",
@@ -457,6 +469,14 @@ export class HttpGenerationProvider implements GenerationProvider {
           ...(controller ? { signal: controller.signal } : {}),
         },
       );
+      // Sub2API echoes both ids on every response; they are what its logs key on.
+      const requestId = response.headers.get("x-request-id")?.trim();
+      const clientRequestId = response.headers.get("x-client-request-id")?.trim();
+      this.trace = {
+        ...(requestId ? { providerRequestId: requestId } : {}),
+        ...(clientRequestId ? { providerClientRequestId: clientRequestId } : {}),
+      };
+      return response;
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError")
         return new Response(null, { status: 504 });
@@ -465,6 +485,12 @@ export class HttpGenerationProvider implements GenerationProvider {
       if (timeout) clearTimeout(timeout);
     }
   }
+}
+
+function withTrace(result: ProviderResult, trace: ProviderTrace): ProviderResult {
+  return trace.providerRequestId || trace.providerClientRequestId
+    ? { ...result, ...trace }
+    : result;
 }
 
 async function httpFailure(response: Response): Promise<ProviderResult> {

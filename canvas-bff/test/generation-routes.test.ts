@@ -46,6 +46,37 @@ test("generation routes create idempotent records and enforce session ownership"
     }
 });
 
+test("video generation rejects reference images on text-only models", async () => {
+    const sessions = new SessionService(new InMemorySessionRepository());
+    const projects = new InMemoryProjectRepository();
+    const providers = new InMemoryProviderRepository();
+    const account = await sessions.upsertAccount({ sub2ApiUserId: "user-a", displayName: "User A", status: "active" });
+    const project = projects.create({ accountId: account.id, name: "Demo", data: {} });
+    const provider = providers.create({ accountId: account.id, name: "Provider", providerType: "openai-compatible", secret: new ProviderSecretBox(Buffer.alloc(32, 1)).encrypt("secret"), secretDescription: { fingerprint: "fingerprint", masked: "****cret" }, status: "active" });
+    const app = await startTestApp(config, {
+        auth: { sub2ApiClient: new Sub2ApiClient(config.sub2ApiBaseUrl, async () => new Response(JSON.stringify({ data: { id: "user-a", username: "User A", status: "active" } }))), sessionService: sessions },
+        workspace: { projects: { projects }, providers: { catalog: createDefaultProviderOptions(sessions, config.sub2ApiBaseUrl).catalog, secretBox: new ProviderSecretBox(Buffer.alloc(32, 1)), providers }, assets: createDefaultAssetOptions(sessions, projects) },
+    });
+    const url = app.url;
+    const session = await sessions.createSession(account);
+    const cookie = `canvas_session=${session.token}`;
+    const submit = (input: Record<string, unknown>, clientRequestId: string) =>
+        fetch(`${url}/api/v1/generations`, { method: "POST", headers: { Origin: config.canvasOrigin, Cookie: cookie, "Content-Type": "application/json" }, body: JSON.stringify({ projectId: project.id, providerId: provider.id, kind: "video", input, clientRequestId }) });
+    try {
+        const rejected = await submit({ model: "seedance2.5", prompt: "forest", referenceImages: ["data:image/png;base64,abc"] }, "request-ref-1");
+        assert.equal(rejected.status, 400);
+        const body = (await rejected.json()) as { code: string; message: string };
+        assert.equal(body.code, "VIDEO_REFERENCE_NOT_SUPPORTED");
+        assert.match(body.message, /seedance2\.5-A/);
+        const supported = await submit({ model: "seedance2.5-A", prompt: "forest", referenceImages: ["data:image/png;base64,abc"] }, "request-ref-2");
+        assert.equal(supported.status, 201);
+        const textOnly = await submit({ model: "seedance2.5", prompt: "forest" }, "request-ref-3");
+        assert.equal(textOnly.status, 201);
+    } finally {
+        await app.close();
+    }
+});
+
 test("video generation submits are gated by model duration capability", async () => {
     const sessions = new SessionService(new InMemorySessionRepository());
     const projects = new InMemoryProjectRepository();

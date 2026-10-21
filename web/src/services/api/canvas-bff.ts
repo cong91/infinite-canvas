@@ -89,6 +89,10 @@ export type CanvasGeneration = {
     progress: number;
     attempt: number;
     errorCode?: string;
+    /** Sub2API request id of the latest upstream attempt (grep this in gateway logs). */
+    providerRequestId?: string;
+    /** Sub2API client_request_id of the latest upstream attempt. */
+    providerClientRequestId?: string;
     outputAssetId?: string;
     asset?: { id: string; kind: string; providerUrl?: string; metadata: Record<string, unknown>; signedUrl?: string };
     createdAt: string;
@@ -179,7 +183,8 @@ async function unwrapResponse<T>(response: Response): Promise<T> {
     const body = await readJson(response);
     if (!response.ok) {
         const error = isErrorBody(body) ? body : undefined;
-        throw new CanvasBffError(response.status, error?.code || "BFF_REQUEST_FAILED", error?.message || "Canvas request failed", error?.requestId);
+        const message = error?.message || "Canvas request failed";
+        throw new CanvasBffError(response.status, error?.code || "BFF_REQUEST_FAILED", error?.requestId ? `${message} (request ${error.requestId})` : message, error?.requestId);
     }
     if (!isEnvelope<T>(body)) throw new CanvasBffError(502, "INVALID_BFF_RESPONSE", "Canvas BFF returned an invalid response");
     return body.data;

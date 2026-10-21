@@ -585,6 +585,44 @@ test("Sub2API video adapter omits empty media fields from the body", async () =>
   });
 });
 
+test("Sub2API adapter surfaces upstream request ids for log tracing", async () => {
+  const { providers, provider } = fixture(undefined, "sub2api-trace-key");
+  const adapter = new HttpGenerationProvider({
+    baseUrl: "https://sub2api.example.test",
+    providers,
+    secretBox,
+    fetchImpl: async () =>
+      new Response(JSON.stringify({ data: [{ b64_json: Buffer.from("img").toString("base64") }] }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "x-request-id": "gateway-request-1",
+          "x-client-request-id": "client-request-1",
+        },
+      }),
+  });
+
+  const result = await adapter.start({
+    id: "generation-trace",
+    accountId: "account-a",
+    projectId: "project-1",
+    providerId: provider.id,
+    kind: "image",
+    input: { prompt: "a tree", model: "gpt-image-2" },
+    inputHash: "hash-trace",
+    clientRequestId: "request-trace",
+    status: "running",
+    progress: 0,
+    attempt: 0,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+
+  assert.equal(result.status, "succeeded");
+  assert.equal(result.providerRequestId, "gateway-request-1");
+  assert.equal(result.providerClientRequestId, "client-request-1");
+});
+
 test("Sub2API video adapter routes a source video through the edits contract", async () => {
   const { providers, provider } = fixture(undefined, "sub2api-video-key-edit");
   let request: Request | undefined;

@@ -20,8 +20,17 @@ export type GenerationRecord = {
     leaseExpiresAt?: Date;
     errorCode?: string;
     outputAssetId?: string;
+    /** Sub2API gateway request id (`x-request-id`) of the latest upstream attempt. */
+    providerRequestId?: string;
+    /** Sub2API client_request_id (`x-client-request-id`) used for log correlation. */
+    providerClientRequestId?: string;
     createdAt: Date;
     updatedAt: Date;
+};
+
+export type ProviderTrace = {
+    providerRequestId?: string;
+    providerClientRequestId?: string;
 };
 
 export interface GenerationRepository {
@@ -35,6 +44,7 @@ export interface GenerationRepository {
     setProviderTask(id: string, providerTaskId: string, workerId: string, leaseExpiresAt: Date): boolean | Promise<boolean>;
     updateProgress(id: string, workerId: string, progress: number): boolean | Promise<boolean>;
     releaseForRetry(id: string, workerId: string, errorCode: string, retryAt?: Date): boolean | Promise<boolean>;
+    setProviderTrace(id: string, workerId: string, trace: ProviderTrace): boolean | Promise<boolean>;
     complete(id: string, workerId: string, outputAssetId: string): boolean | Promise<boolean>;
     fail(id: string, workerId: string, errorCode: string): boolean | Promise<boolean>;
 }
@@ -126,6 +136,15 @@ export class InMemoryGenerationRepository implements GenerationRepository {
         record.errorCode = errorCode;
         record.leaseOwner = undefined;
         record.leaseExpiresAt = retryAt;
+        record.updatedAt = new Date(this.now());
+        return true;
+    }
+
+    setProviderTrace(id: string, workerId: string, trace: ProviderTrace): boolean {
+        const record = this.records.get(id);
+        if (!record || record.leaseOwner !== workerId) return false;
+        if (trace.providerRequestId) record.providerRequestId = trace.providerRequestId;
+        if (trace.providerClientRequestId) record.providerClientRequestId = trace.providerClientRequestId;
         record.updatedAt = new Date(this.now());
         return true;
     }

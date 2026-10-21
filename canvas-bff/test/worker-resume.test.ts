@@ -154,6 +154,30 @@ test("worker fails a generation permanently after exhausting retry attempts", as
     assert.equal((await fixtureData.service.list(fixtureData.accountId)).length, 1);
 });
 
+test("worker persists upstream request ids from the provider result", async () => {
+    const fixtureData = fixture();
+    await fixtureData.service.create(fixtureData.accountId, {
+        projectId: fixtureData.project.id,
+        providerId: fixtureData.provider.id,
+        kind: "image",
+        input: { prompt: "trace me" },
+        clientRequestId: "request-trace-1",
+    });
+    const provider: GenerationProvider = {
+        async start() {
+            return { status: "failed", retryable: true, errorCode: "UPSTREAM_HTTP_502", providerRequestId: "gateway-request-1", providerClientRequestId: "client-request-1" };
+        },
+        async poll() {
+            throw new Error("poll is not expected");
+        },
+    };
+    const worker = new GenerationWorker({ generationRepository: fixtureData.generations, assetRepository: fixtureData.assets, objectStorage: fixtureData.storage, provider, workerId: "worker-trace", now: fixtureData.clock });
+    const result = await worker.runOnce();
+    assert.equal(result?.status, "queued");
+    assert.equal(result?.providerRequestId, "gateway-request-1");
+    assert.equal(result?.providerClientRequestId, "client-request-1");
+});
+
 test("worker loop drains work and stops without leaving a timer", async () => {
     const fixtureData = fixture();
     await fixtureData.service.create(fixtureData.accountId, {
