@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- [修复] Canvas 生成请求体不再携带空字段：未选择参考素材时，BFF 仍会向上游发送 `reference_images: []`，Seedance 等上游直接返回 422「不支持字段 reference_images」（已在 OVH 用真实网关重放复现：带空数组失败、省略该字段返回 200 任务 id）。现在 Generation Intent 在发往 Sub2API 前统一剔除空字符串、空数组、空对象与 null 参数，没有参考图的请求体与上游合约一致。
+
 - [修复] Canvas Seedance 视频请求体改为 new-api 兼容合约：`aspect_ratio`/`watermark` 会被 iliu.ai 等网关的 Seedance 渠道以 502「暂时不可用」拒绝，Seedance 模型现在改用 `ratio` 并省略 `watermark`，Grok 视频仍保持原字段。
 
 - [修复] Canvas 视频编辑请求在上游不支持 `/v1/videos/edits` 时自动回退：new-api 风格网关（如 iliu.ai）把 image/video 参考直接放在 `/v1/videos/generations` 请求体里，没有独立的 edits 端点；此前 BFF 一律走 `/v1/videos/edits`，导致带源视频的编辑任务在这些上游上以 UPSTREAM_HTTP_404 失败。现在 edits 端点返回 404 时，BFF 自动用同一请求体重试 `/v1/videos/generations`（保留 `video:{url}`、`audio:{url}`、`reference_images` 字段），xAI 真实端点不受影响（edits 成功即不触发回退）。

@@ -38,6 +38,8 @@ export function buildGenerationIntent(
 
   if (kind === "video") normalizeVideoParameters(input, parameters, model);
 
+  removeEmptyParameters(parameters);
+
   return { kind, model, prompt, parameters };
 }
 
@@ -101,6 +103,20 @@ function normalizeVideoParameters(
 function canonicalParameterName(key: string) {
   if (key === "aspectRatio") return "aspect_ratio";
   return key;
+}
+
+// Gateways reject known-but-empty fields (e.g. `reference_images: []` -> 422
+// 不支持字段), so a blank value must be absent rather than present-and-empty.
+function removeEmptyParameters(parameters: Record<string, unknown>) {
+  for (const [key, value] of Object.entries(parameters))
+    if (isEmptyParameter(value)) delete parameters[key];
+}
+
+function isEmptyParameter(value: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  if (typeof value === "string") return value.trim() === "";
+  if (Array.isArray(value)) return value.length === 0;
+  return typeof value === "object" && Object.keys(value).length === 0;
 }
 
 /** Gateway contract: image references travel as {image_url} objects (data or https URLs). */

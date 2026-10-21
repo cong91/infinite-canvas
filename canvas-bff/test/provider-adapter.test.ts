@@ -529,6 +529,62 @@ test("Sub2API video adapter forwards reference images in the gateway contract", 
   ]);
 });
 
+test("Sub2API video adapter omits empty media fields from the body", async () => {
+  const { providers, provider } = fixture(undefined, "sub2api-video-key-empty-refs");
+  let request: Request | undefined;
+  const adapter = new HttpGenerationProvider({
+    baseUrl: "https://sub2api.example.test",
+    providers,
+    secretBox,
+    fetchImpl: async (input, init) => {
+      request = new Request(input, init);
+      return new Response(JSON.stringify({ request_id: "seedance-task-empty" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+  });
+
+  await adapter.start({
+    id: "generation-video-empty-refs",
+    accountId: "account-a",
+    projectId: "project-1",
+    providerId: provider.id,
+    kind: "video",
+    input: {
+      prompt: "voxel world",
+      model: "seedance2.5",
+      duration: 6,
+      resolution: "720p",
+      ratio: "1:1",
+      generate_audio: true,
+      referenceImages: [],
+      referenceVideos: [],
+      referenceAudios: [],
+    },
+    inputHash: "hash-video-empty-refs",
+    clientRequestId: "request-video-empty-refs",
+    status: "running",
+    progress: 0,
+    attempt: 0,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+
+  const body = (await request?.json()) as Record<string, unknown>;
+  assert.equal("reference_images" in body, false);
+  assert.equal("video" in body, false);
+  assert.equal("audio" in body, false);
+  assert.deepEqual(body, {
+    model: "seedance2.5",
+    prompt: "voxel world",
+    duration: 6,
+    resolution: "720p",
+    ratio: "1:1",
+    generate_audio: true,
+  });
+});
+
 test("Sub2API video adapter routes a source video through the edits contract", async () => {
   const { providers, provider } = fixture(undefined, "sub2api-video-key-edit");
   let request: Request | undefined;
