@@ -1,5 +1,8 @@
+import { createHash } from "node:crypto";
+
 import type { AssetRepository } from "../assets/repository.js";
 import type { ProviderRepository } from "../providers/repository.js";
+import { isSeedanceModel } from "../providers/generation-intent.js";
 import type { GenerationRecord, GenerationRepository, ProviderTrace } from "../generations/repository.js";
 import type { ObjectStorage } from "../storage/object-storage.js";
 import type { ObjectStorageRetention } from "../storage/retention.js";
@@ -52,7 +55,9 @@ export class GenerationWorker {
             return undefined;
         }
         if (generation.status === "cancelled") return undefined;
-        const result = generation.providerTaskId ? await this.provider.poll(generation) : await this.provider.start(generation);
+        const result = generation.providerTaskId
+            ? await this.provider.poll(generation)
+            : await this.provider.start(await this.hostSeedanceReferences(generation));
         const trace = providerTrace(result);
         if (trace && (trace.providerRequestId !== generation.providerRequestId || trace.providerClientRequestId !== generation.providerClientRequestId))
             await this.generations.setProviderTrace(generation.id, this.workerId, trace);
@@ -82,6 +87,29 @@ export class GenerationWorker {
         await this.generations.complete(generation.id, this.workerId, asset.id);
         await this.enforceRetention([stored.key]);
         return this.generations.get(generation.accountId, generation.id);
+    }
+
+    /**
+     * Seedance rejects `data:` references ("only http/https allowed"), so local
+     * canvas images are stored once (checksum key) and sent as a signed URL.
+     */
+    private async hostSeedanceReferences(generation: GenerationRecord): Promise<GenerationRecord> {
+        if (generation.kind !== "video" || !isSeedanceModel(String(generation.input.model ?? ""))) return generation;
+        const references = generation.input.referenceImages;
+        if (!Array.isArray(references)) return generation;
+        if (!references.some((item) => typeof item === "string" && item.startsWith("data:"))) return generation;
+        const hosted = await Promise.all(
+            references.map(async (item) => {
+                if (typeof item !== "string" || !item.startsWith("data:")) return item;
+                const match = /^data:([^;,]+);base64,([\s\S]+)$/.exec(item);
+                if (!match) return item;
+                const data = Buffer.from(match[2], "base64");
+                const key = `accounts/${generation.accountId}/references/${createHash("sha256").update(data).digest("hex")}`;
+                await this.storage.put({ accountId: generation.accountId, data, contentType: match[1], key });
+                return (await this.storage.createSignedReadUrl(generation.accountId, key, 3_600)) || item;
+            }),
+        );
+        return { ...generation, input: { ...generation.input, referenceImages: hosted } };
     }
 
     private retryBackoffMs(attempt: number): number {

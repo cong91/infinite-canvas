@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- [修复] Seedance 参考图必须用 http(s) URL：本地图片一直以 base64 data URI 随请求发送，Seedance 渠道直接拒绝（`UPSTREAM_HTTP_400` / `reference URL is invalid: unsupported protocol: data (only http/https allowed)`，已用生产 request id 在 sub2api 日志确认）。现在 worker 在上传前把 data URI 解码后按 sha256 存入媒体存储（同一张图只存一份），改用 1 小时有效的签名 https URL 作为 `input_reference`；Grok 视频仍直接透传 data URI，不受影响。
+
 - [新增] 生成任务请求 ID 全链路可追踪：worker 现在捕获 Sub2API 响应头 `x-request-id` / `x-client-request-id` 并写入 `canvas_generations.provider_request_id` / `provider_client_request_id`，同时按 `generation=<id> attempt=<n> model=<m> result=<status> upstream_request=<id> upstream_client=<id>` 格式输出日志；画布、图片/视频工作台等所有生成失败提示都会附带「Mã request」（生成 ID）和「Mã upstream」（Sub2API client_request_id），所有 BFF 接口错误也会带上本次 HTTP 请求的 requestId，便于直接 grep 日志定位。
 
 - [修复] Seedance 图生视频参考图字段错误：Seedance/Doubao 渠道从 `input_reference` 读取首帧，而 BFF 一直按 xAI 合约发送 `reference_images`。网关因此把任务判成 text-to-video 并丢弃参考图（上游日志 `暂时不可用` / `不支持字段 reference_images`，body 里 1.6MB base64 图片等于白传）。现在 Seedance 模型改用 `input_reference`，Grok 视频仍用 `reference_images`；同时撤销上一版「seedance2.5 不允许带参考图」的提交期拦截——该结论来自配额不足被误判为模型不支持（iliu 定价接口显示 `seedance2.5` 本身就标注支持图生视频）。

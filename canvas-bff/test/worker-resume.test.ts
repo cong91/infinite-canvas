@@ -178,6 +178,35 @@ test("worker persists upstream request ids from the provider result", async () =
     assert.equal(result?.providerClientRequestId, "client-request-1");
 });
 
+test("worker hosts seedance data-uri references as https urls before calling the provider", async () => {
+    const fixtureData = fixture();
+    const dataUrl = `data:image/png;base64,${Buffer.from("png-bytes").toString("base64")}`;
+    await fixtureData.service.create(fixtureData.accountId, {
+        projectId: fixtureData.project.id,
+        providerId: fixtureData.provider.id,
+        kind: "video",
+        input: { prompt: "animate the frame", model: "seedance2.5-F", seconds: 4, referenceImages: [dataUrl] },
+        clientRequestId: "request-host-ref-1",
+    });
+    let seenInput: Record<string, unknown> | undefined;
+    const provider: GenerationProvider = {
+        async start(generation) {
+            seenInput = generation.input;
+            return { status: "pending", providerTaskId: "provider-task-ref" };
+        },
+        async poll() {
+            throw new Error("poll is not expected");
+        },
+    };
+    const worker = new GenerationWorker({ generationRepository: fixtureData.generations, assetRepository: fixtureData.assets, objectStorage: fixtureData.storage, provider, workerId: "worker-host-ref", now: fixtureData.clock });
+
+    const result = await worker.runOnce();
+    assert.equal(result?.status, "provider_polling");
+    const references = seenInput?.referenceImages as string[];
+    assert.match(references[0], /^https:\/\/canvas-storage\.invalid\/object\//);
+    assert.equal((await fixtureData.storage.list(fixtureData.accountId)).length, 1);
+});
+
 test("worker loop drains work and stops without leaving a timer", async () => {
     const fixtureData = fixture();
     await fixtureData.service.create(fixtureData.accountId, {

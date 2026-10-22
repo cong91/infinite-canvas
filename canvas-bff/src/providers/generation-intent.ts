@@ -133,7 +133,7 @@ function imageReferenceUrls(value: unknown): string[] {
 }
 
 /** Seedance/Doubao channels read the input frame from `input_reference`, not `reference_images`. */
-function isSeedanceModel(model: string) {
+export function isSeedanceModel(model: string) {
   return /seedance|doubao/i.test(model);
 }
 
