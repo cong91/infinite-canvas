@@ -11,7 +11,7 @@ import { Injectable, Logger } from "@nestjs/common";
 export type ProviderResult = (
     | { status: "succeeded"; data: Buffer | Uint8Array | string; contentType: string; providerUrl?: string }
     | { status: "pending"; providerTaskId: string; progress?: number }
-    | { status: "failed"; retryable: boolean; errorCode: string }
+    | { status: "failed"; retryable: boolean; errorCode: string; errorMessage?: string }
 ) & ProviderTrace;
 
 export type GenerationProvider = {
@@ -70,9 +70,9 @@ export class GenerationWorker {
             return this.generations.get(generation.accountId, generation.id);
         }
         if (result.status === "failed") {
-            if (!result.retryable) await this.generations.fail(generation.id, this.workerId, result.errorCode);
-            else if (generation.attempt + 1 >= this.maxAttempts) await this.generations.fail(generation.id, this.workerId, "MAX_RETRY_EXCEEDED");
-            else await this.generations.releaseForRetry(generation.id, this.workerId, result.errorCode, new Date(this.now() + this.retryBackoffMs(generation.attempt)));
+            if (!result.retryable) await this.generations.fail(generation.id, this.workerId, result.errorCode, result.errorMessage);
+            else if (generation.attempt + 1 >= this.maxAttempts) await this.generations.fail(generation.id, this.workerId, "MAX_RETRY_EXCEEDED", result.errorMessage);
+            else await this.generations.releaseForRetry(generation.id, this.workerId, result.errorCode, new Date(this.now() + this.retryBackoffMs(generation.attempt)), result.errorMessage);
             return this.generations.get(generation.accountId, generation.id);
         }
         const stored = await this.storage.put({ accountId: generation.accountId, data: result.data, contentType: result.contentType });

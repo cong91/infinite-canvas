@@ -3,7 +3,7 @@ import type { Pool } from "pg";
 
 import type { GenerationRecord, GenerationRepository, ProviderTrace } from "./repository.js";
 
-const columns = "id, account_id, project_id, provider_id, kind, input, input_hash, client_request_id, status, progress, provider_task_id, attempt, lease_owner, lease_expires_at, error_code, output_asset_id, provider_request_id, provider_client_request_id, created_at, updated_at";
+const columns = "id, account_id, project_id, provider_id, kind, input, input_hash, client_request_id, status, progress, provider_task_id, attempt, lease_owner, lease_expires_at, error_code, error_message, output_asset_id, provider_request_id, provider_client_request_id, created_at, updated_at";
 const baseQuery = `SELECT ${columns} FROM canvas_generations`;
 
 export class PostgresGenerationRepository implements GenerationRepository {
@@ -74,8 +74,8 @@ export class PostgresGenerationRepository implements GenerationRepository {
         return result.rowCount === 1;
     }
 
-    async releaseForRetry(id: string, workerId: string, errorCode: string, retryAt?: Date): Promise<boolean> {
-        const result = await this.pool.query("UPDATE canvas_generations SET status = 'queued', attempt = attempt + 1, error_code = $3, lease_owner = NULL, lease_expires_at = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND lease_owner = $2 AND status <> 'cancelled'", [id, workerId, errorCode, retryAt ?? null]);
+    async releaseForRetry(id: string, workerId: string, errorCode: string, retryAt?: Date, errorMessage?: string): Promise<boolean> {
+        const result = await this.pool.query("UPDATE canvas_generations SET status = 'queued', attempt = attempt + 1, error_code = $3, error_message = $5, lease_owner = NULL, lease_expires_at = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND lease_owner = $2 AND status <> 'cancelled'", [id, workerId, errorCode, retryAt ?? null, errorMessage ?? null]);
         return result.rowCount === 1;
     }
 
@@ -89,8 +89,8 @@ export class PostgresGenerationRepository implements GenerationRepository {
         return result.rowCount === 1;
     }
 
-    async fail(id: string, workerId: string, errorCode: string): Promise<boolean> {
-        const result = await this.pool.query("UPDATE canvas_generations SET status = 'failed', error_code = $3, lease_owner = NULL, lease_expires_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND lease_owner = $2 AND status <> 'cancelled'", [id, workerId, errorCode]);
+    async fail(id: string, workerId: string, errorCode: string, errorMessage?: string): Promise<boolean> {
+        const result = await this.pool.query("UPDATE canvas_generations SET status = 'failed', error_code = $3, error_message = $4, lease_owner = NULL, lease_expires_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND lease_owner = $2 AND status <> 'cancelled'", [id, workerId, errorCode, errorMessage ?? null]);
         return result.rowCount === 1;
     }
 }
@@ -112,6 +112,7 @@ function toGeneration(row: Record<string, unknown>): GenerationRecord {
         ...(row.lease_owner ? { leaseOwner: String(row.lease_owner) } : {}),
         ...(row.lease_expires_at ? { leaseExpiresAt: new Date(String(row.lease_expires_at)) } : {}),
         ...(row.error_code ? { errorCode: String(row.error_code) } : {}),
+        ...(row.error_message ? { errorMessage: String(row.error_message) } : {}),
         ...(row.output_asset_id ? { outputAssetId: String(row.output_asset_id) } : {}),
         ...(row.provider_request_id ? { providerRequestId: String(row.provider_request_id) } : {}),
         ...(row.provider_client_request_id ? { providerClientRequestId: String(row.provider_client_request_id) } : {}),

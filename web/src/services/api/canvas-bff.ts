@@ -89,6 +89,8 @@ export type CanvasGeneration = {
     progress: number;
     attempt: number;
     errorCode?: string;
+    /** Verbatim upstream failure text (e.g. a copyright rejection from the provider). */
+    errorMessage?: string;
     /** Sub2API request id of the latest upstream attempt (grep this in gateway logs). */
     providerRequestId?: string;
     /** Sub2API client_request_id of the latest upstream attempt. */

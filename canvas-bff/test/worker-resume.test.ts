@@ -207,6 +207,30 @@ test("worker hosts seedance data-uri references as https urls before calling the
     assert.equal((await fixtureData.storage.list(fixtureData.accountId)).length, 1);
 });
 
+test("worker persists the upstream failure reason when a generation fails", async () => {
+    const fixtureData = fixture();
+    await fixtureData.service.create(fixtureData.accountId, {
+        projectId: fixtureData.project.id,
+        providerId: fixtureData.provider.id,
+        kind: "video",
+        input: { prompt: "copyrighted audio", model: "seedance-2.5-M" },
+        clientRequestId: "request-failure-reason-1",
+    });
+    const provider: GenerationProvider = {
+        async start() {
+            return { status: "failed", retryable: false, errorCode: "PROVIDER_FAILED", errorMessage: "生成内容音频疑似涉及版权，请调整后重试" };
+        },
+        async poll() {
+            throw new Error("poll is not expected");
+        },
+    };
+    const worker = new GenerationWorker({ generationRepository: fixtureData.generations, assetRepository: fixtureData.assets, objectStorage: fixtureData.storage, provider, workerId: "worker-failure-reason", now: fixtureData.clock });
+    const result = await worker.runOnce();
+    assert.equal(result?.status, "failed");
+    assert.equal(result?.errorCode, "PROVIDER_FAILED");
+    assert.equal(result?.errorMessage, "生成内容音频疑似涉及版权，请调整后重试");
+});
+
 test("worker loop drains work and stops without leaving a timer", async () => {
     const fixtureData = fixture();
     await fixtureData.service.create(fixtureData.accountId, {

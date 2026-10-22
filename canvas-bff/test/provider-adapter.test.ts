@@ -891,6 +891,47 @@ test("adapter honors an explicit non-retryable Sub2API error contract", async ()
   assert.deepEqual(result, { status: "failed", retryable: false, errorCode: "PROVIDER_NO_ELIGIBLE_ACCOUNT" });
 });
 
+test("video adapter keeps the upstream failure reason on a failed task", async () => {
+  const { providers, provider } = fixture();
+  const adapter = new HttpGenerationProvider({
+    baseUrl: "https://sub2api.example.test",
+    providers,
+    secretBox,
+    fetchImpl: async () =>
+      new Response(
+        JSON.stringify({
+          status: "failed",
+          error: { code: "task_failed", message: "生成内容音频疑似涉及版权，请调整后重试" },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+  });
+
+  const result = await adapter.poll({
+    id: "generation-failed-reason",
+    accountId: "account-a",
+    projectId: "project-1",
+    providerId: provider.id,
+    kind: "video",
+    input: { prompt: "status" },
+    inputHash: "hash",
+    clientRequestId: "request-failed-reason",
+    status: "provider_polling",
+    progress: 0,
+    providerTaskId: "task-failed-reason",
+    attempt: 0,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+
+  assert.deepEqual(result, {
+    status: "failed",
+    retryable: false,
+    errorCode: "PROVIDER_FAILED",
+    errorMessage: "生成内容音频疑似涉及版权，请调整后重试",
+  });
+});
+
 test("video adapter treats expired and unknown statuses as terminal failures", async () => {
   const { providers, provider } = fixture();
   const adapter = new HttpGenerationProvider({
@@ -1005,6 +1046,7 @@ test("video adapter treats an unavailable Grok media account pool as terminal", 
     status: "failed",
     retryable: false,
     errorCode: "PROVIDER_NO_ELIGIBLE_ACCOUNT",
+    errorMessage: "No eligible Grok media accounts",
   });
 });
 

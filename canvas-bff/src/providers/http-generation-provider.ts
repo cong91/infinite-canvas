@@ -107,7 +107,8 @@ export class HttpGenerationProvider implements GenerationProvider {
         progress: numberValue(payload.progress ?? data.progress ?? video.progress) ?? 0,
       };
     }
-    if (["failed", "cancelled", "canceled", "expired"].includes(status || ""))
+    if (["failed", "cancelled", "canceled", "expired"].includes(status || "")) {
+      const errorMessage = upstreamErrorMessage(payload, data, video);
       return {
         status: "failed",
         retryable: false,
@@ -117,7 +118,9 @@ export class HttpGenerationProvider implements GenerationProvider {
             : status === "expired"
               ? "PROVIDER_EXPIRED"
               : "PROVIDER_FAILED",
+        ...(errorMessage ? { errorMessage } : {}),
       };
+    }
     if (
       status === "done" ||
       status === "completed" ||
@@ -283,7 +286,8 @@ export class HttpGenerationProvider implements GenerationProvider {
         retryable: false,
         errorCode: "PROVIDER_TASK_MISSING",
       };
-    if (["failed", "cancelled", "canceled", "expired"].includes(status || ""))
+    if (["failed", "cancelled", "canceled", "expired"].includes(status || "")) {
+      const errorMessage = upstreamErrorMessage(payload, data, video);
       return {
         status: "failed",
         retryable: false,
@@ -293,7 +297,9 @@ export class HttpGenerationProvider implements GenerationProvider {
             : status === "expired"
               ? "PROVIDER_EXPIRED"
               : "PROVIDER_FAILED",
+        ...(errorMessage ? { errorMessage } : {}),
       };
+    }
     if (["completed", "succeeded", "done"].includes(status || ""))
       return this.downloadCompletedVideo(
         context.baseUrl,
@@ -499,11 +505,13 @@ async function httpFailure(response: Response): Promise<ProviderResult> {
   const errorType = stringValue(
     error.code ?? error.type ?? payload.code ?? payload.type,
   );
+  const errorMessage = upstreamErrorMessage(payload);
   if (errorType && /(?:grok_media_)?no_eligible_account/i.test(errorType)) {
     return {
       status: "failed",
       retryable: false,
       errorCode: "PROVIDER_NO_ELIGIBLE_ACCOUNT",
+      ...(errorMessage ? { errorMessage } : {}),
     };
   }
 
@@ -513,6 +521,7 @@ async function httpFailure(response: Response): Promise<ProviderResult> {
       status: "failed",
       retryable: false,
       errorCode: upstreamErrorCode(errorType, response.status),
+      ...(errorMessage ? { errorMessage } : {}),
     };
   }
 
@@ -525,7 +534,18 @@ async function httpFailure(response: Response): Promise<ProviderResult> {
         response.status === 429 ||
         response.status >= 500),
     errorCode: `UPSTREAM_HTTP_${response.status}`,
+    ...(errorMessage ? { errorMessage } : {}),
   };
+}
+
+/** Pulls the human-readable failure text out of any provider response shape. */
+function upstreamErrorMessage(...values: Record<string, unknown>[]): string | undefined {
+  for (const value of values) {
+    const error = recordValue(value.error);
+    const message = stringValue(error.message ?? error.detail ?? value.message ?? value.detail);
+    if (message) return message;
+  }
+  return undefined;
 }
 
 function upstreamErrorCode(errorType: string | undefined, status: number): string {

@@ -65,8 +65,8 @@ export async function waitForCanvasGeneration(generationId: string, options?: { 
     }
 }
 
-function canvasGenerationError(generation: Pick<CanvasGeneration, "id" | "errorCode" | "providerRequestId" | "providerClientRequestId">) {
-    const reason = generation.errorCode === "PROVIDER_NO_ELIGIBLE_ACCOUNT" ? i18n.t("apiErrors.noEligibleVideoAccount") : generation.errorCode || i18n.t("apiErrors.videoGenerationFailed");
+function canvasGenerationError(generation: Pick<CanvasGeneration, "id" | "errorCode" | "errorMessage" | "providerRequestId" | "providerClientRequestId">) {
+    const reason = generation.errorMessage || (generation.errorCode === "PROVIDER_NO_ELIGIBLE_ACCOUNT" ? i18n.t("apiErrors.noEligibleVideoAccount") : generation.errorCode || i18n.t("apiErrors.videoGenerationFailed"));
     const trace = [i18n.t("apiErrors.requestId", { requestId: generation.id })];
     if (generation.providerClientRequestId) trace.push(i18n.t("apiErrors.upstreamRequestId", { requestId: generation.providerClientRequestId }));
     return `${reason} (${trace.join(", ")})`;

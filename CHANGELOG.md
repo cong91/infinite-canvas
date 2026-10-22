@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- [修复] 生成失败时保留并展示上游真实原因：此前 provider 只取上游 `status=failed`，把 `error.message` 丢掉，画布只能显示笼统的 `PROVIDER_FAILED`。现在失败原因（如「生成内容音频疑似涉及版权，请调整后重试」）会原样写入 `canvas_generations.error_message`（迁移 `0008`），并通过 API 返回、在画布/工作台错误提示中展示；重试与最终失败两条路径都会记录，provider 提交阶段的 HTTP 错误也会带上 `error.message`。
+
 - [修复] Seedance 参考图必须用 http(s) URL：本地图片一直以 base64 data URI 随请求发送，Seedance 渠道直接拒绝（`UPSTREAM_HTTP_400` / `reference URL is invalid: unsupported protocol: data (only http/https allowed)`，已用生产 request id 在 sub2api 日志确认）。现在 worker 在上传前把 data URI 解码后按 sha256 存入媒体存储（同一张图只存一份），改用 1 小时有效的签名 https URL 作为 `input_reference`；Grok 视频仍直接透传 data URI，不受影响。
 
 - [新增] 生成任务请求 ID 全链路可追踪：worker 现在捕获 Sub2API 响应头 `x-request-id` / `x-client-request-id` 并写入 `canvas_generations.provider_request_id` / `provider_client_request_id`，同时按 `generation=<id> attempt=<n> model=<m> result=<status> upstream_request=<id> upstream_client=<id>` 格式输出日志；画布、图片/视频工作台等所有生成失败提示都会附带「Mã request」（生成 ID）和「Mã upstream」（Sub2API client_request_id），所有 BFF 接口错误也会带上本次 HTTP 请求的 requestId，便于直接 grep 日志定位。

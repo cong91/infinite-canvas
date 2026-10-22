@@ -19,6 +19,8 @@ export type GenerationRecord = {
     leaseOwner?: string;
     leaseExpiresAt?: Date;
     errorCode?: string;
+    /** Upstream (provider) failure text, kept verbatim for the UI and logs. */
+    errorMessage?: string;
     outputAssetId?: string;
     /** Sub2API gateway request id (`x-request-id`) of the latest upstream attempt. */
     providerRequestId?: string;
@@ -43,10 +45,10 @@ export interface GenerationRepository {
     heartbeat(id: string, workerId: string, expiresAt: Date): boolean | Promise<boolean>;
     setProviderTask(id: string, providerTaskId: string, workerId: string, leaseExpiresAt: Date): boolean | Promise<boolean>;
     updateProgress(id: string, workerId: string, progress: number): boolean | Promise<boolean>;
-    releaseForRetry(id: string, workerId: string, errorCode: string, retryAt?: Date): boolean | Promise<boolean>;
+    releaseForRetry(id: string, workerId: string, errorCode: string, retryAt?: Date, errorMessage?: string): boolean | Promise<boolean>;
     setProviderTrace(id: string, workerId: string, trace: ProviderTrace): boolean | Promise<boolean>;
     complete(id: string, workerId: string, outputAssetId: string): boolean | Promise<boolean>;
-    fail(id: string, workerId: string, errorCode: string): boolean | Promise<boolean>;
+    fail(id: string, workerId: string, errorCode: string, errorMessage?: string): boolean | Promise<boolean>;
 }
 
 export class InMemoryGenerationRepository implements GenerationRepository {
@@ -128,12 +130,13 @@ export class InMemoryGenerationRepository implements GenerationRepository {
         return true;
     }
 
-    releaseForRetry(id: string, workerId: string, errorCode: string, retryAt?: Date): boolean {
+    releaseForRetry(id: string, workerId: string, errorCode: string, retryAt?: Date, errorMessage?: string): boolean {
         const record = this.records.get(id);
         if (!record || record.leaseOwner !== workerId || record.status === "cancelled") return false;
         record.status = "queued";
         record.attempt += 1;
         record.errorCode = errorCode;
+        record.errorMessage = errorMessage;
         record.leaseOwner = undefined;
         record.leaseExpiresAt = retryAt;
         record.updatedAt = new Date(this.now());
@@ -161,11 +164,12 @@ export class InMemoryGenerationRepository implements GenerationRepository {
         return true;
     }
 
-    fail(id: string, workerId: string, errorCode: string): boolean {
+    fail(id: string, workerId: string, errorCode: string, errorMessage?: string): boolean {
         const record = this.records.get(id);
         if (!record || record.leaseOwner !== workerId || record.status === "cancelled") return false;
         record.status = "failed";
         record.errorCode = errorCode;
+        record.errorMessage = errorMessage;
         record.leaseOwner = undefined;
         record.leaseExpiresAt = undefined;
         record.updatedAt = new Date(this.now());
