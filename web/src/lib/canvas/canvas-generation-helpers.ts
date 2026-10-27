@@ -2,7 +2,7 @@ import { defaultConfig, resolveModelForCapability, type AiConfig } from "@/store
 import i18n from "@/i18n";
 import { ensureImagePreview, getImageBlob, resolveImageUrl, setImageBlob, uploadImage } from "@/services/image-storage";
 import { getMediaBlob, resolveMediaUrl, setMediaBlob } from "@/services/file-storage";
-import { canvasBff, type CanvasAsset } from "@/services/api/canvas-bff";
+import { canvasBff, decodeCanvasModel, type CanvasAsset } from "@/services/api/canvas-bff";
 import { isCanvasAccountAuthenticated } from "@/services/api/canvas-generation";
 import { imageMetadata, referenceUrl } from "@/lib/canvas/canvas-node-factory";
 import type { NodeGenerationInput } from "@/components/canvas/canvas-node-generation";
@@ -196,6 +196,16 @@ export function buildGenerationConfig(config: AiConfig, node: CanvasNodeData | u
 
 export function hasResumableVideoTask(node: CanvasNodeData) {
     return node.type === CanvasNodeType.Video && Boolean(node.metadata?.videoTaskId) && !node.metadata?.content;
+}
+
+/**
+ * The provider a stored video task must be polled through.
+ * Nodes saved before the provider was persisted verbatim carry "openai" for Canvas tasks,
+ * so the canvas:: model prefix wins over the stored value.
+ */
+export function resolveVideoTaskProvider(node: CanvasNodeData): "openai" | "gemini" | "canvas" {
+    if (decodeCanvasModel(node.metadata?.model || "")) return "canvas";
+    return node.metadata?.videoTaskProvider === "gemini" ? "gemini" : "openai";
 }
 
 export function resetInterruptedGeneration(nodes: CanvasNodeData[]) {
